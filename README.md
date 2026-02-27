@@ -1,6 +1,7 @@
 # ClawHome iOS
 
 [中文说明](./README.zh-CN.md)
+[Quick Start (EN)](./docs/QUICKSTART.md) | [Quick Start (中文)](./docs/QUICKSTART.zh-CN.md)
 
 ClawHome iOS is a lightweight UI control app for OpenClaw.
 It connects to an OpenClaw Gateway over WebSocket (`ws://` / `wss://`) and focuses on session browsing + chat UI.
@@ -14,6 +15,10 @@ This repository is intentionally **UI-only**:
 
 ClawHome iOS is for operators who already have an OpenClaw Gateway endpoint and want a native iOS control panel.
 
+OpenClaw channels (WhatsApp/Telegram/etc.) run inside OpenClaw Gateway itself.
+ClawHome does not host channel runtimes. It only connects to the Gateway WebSocket RPC control plane.
+That means ClawHome can control the whole OpenClaw instance, but only when the Gateway endpoint is reachable from your phone.
+
 ## Features
 
 - Multi-gateway management (add/edit/delete)
@@ -26,20 +31,11 @@ ClawHome iOS is for operators who already have an OpenClaw Gateway endpoint and 
 
 - macOS 14+ and Xcode 16+
 - iOS 18.5+ Simulator or device
-- A running OpenClaw Gateway endpoint (for example `ws://127.0.0.1:18789`)
+- A running OpenClaw Gateway endpoint
 
 ## Quick Start
 
-1. Start your OpenClaw Gateway
-
-Make sure your gateway is reachable from your iPhone/Simulator.
-Use either:
-- `ws://<host>:<port>`
-- `wss://<host>/<path>?secret=<YOUR_SECRET>`
-
-`secret`, `token`, and `password` query parameters are all supported by the client.
-
-2. Clone and open the project
+1. Clone and open the project
 
 ```bash
 git clone https://github.com/yeyitech/clawhome-ios.git
@@ -47,7 +43,38 @@ cd clawhome-ios
 open clawhome.xcodeproj
 ```
 
-3. (Optional) Configure Alibaba DashScope ASR key
+2. Install to a real iPhone in Xcode
+
+- Select project `clawhome` -> target `clawhome` -> `Signing & Capabilities`
+- Set your own `Bundle Identifier` (must be unique)
+- Select your Apple Team and keep `Automatically manage signing` enabled
+- Connect your iPhone, choose it as the run destination, then press Run
+- On first launch, trust the developer profile on iPhone:
+  `Settings -> General -> VPN & Device Management -> Developer App -> Trust`
+
+3. Start OpenClaw and generate a pairing QR
+
+- LAN pairing:
+  `scripts/openclaw-pair.sh --exposure lan`
+- Cloudflare Tunnel pairing (public URL):
+  `scripts/openclaw-pair.sh --exposure cloudflare`
+- Tailscale pairing:
+  `scripts/openclaw-pair.sh --exposure tailscale`
+
+The script auto-detects:
+- OpenClaw config path
+- `gateway.auth.mode`
+- `gateway.auth.token` / `gateway.auth.password` (env overrides take precedence)
+
+Then it prints a ClawHome-compatible `ws://` or `wss://` URL and renders a terminal QR.
+
+4. Scan in app
+
+- Open ClawHome on iPhone
+- Tap `+` -> `Scan QR Code`
+- Save the gateway and open a session
+
+5. (Optional) Configure Alibaba DashScope ASR key
 
 If you only need text chat, skip this step.
 
@@ -62,7 +89,7 @@ Optional WebSocket override:
 Default ASR WebSocket endpoint:
 - `wss://dashscope.aliyuncs.com/api-ws/v1/inference/`
 
-4. Build and run
+6. Build from command line (optional)
 
 Using Xcode:
 - Select scheme `clawhome`
@@ -83,13 +110,6 @@ xcodebuild \
   CODE_SIGNING_ALLOWED=NO \
   build
 ```
-
-5. Add Gateway in app
-
-- Tap `+` on home
-- Paste or scan your OpenClaw WebSocket URL
-- Enter a display name and save
-- Open a session and start chatting
 
 ## Security & Open Source Readiness
 
@@ -118,6 +138,13 @@ GitHub Actions workflow: `.github/workflows/ios-ci.yml`
   - Verify the gateway URL scheme is `ws://` or `wss://`
   - Verify device/simulator can reach gateway host and port
   - If using auth, verify `secret`/`token`/`password` query value
+- LAN pairing fails with timeout:
+  - Your gateway is likely still loopback-only
+  - Restart gateway with LAN bind, then regenerate QR:
+    `openclaw gateway --bind lan --auth token --token '<LONG_RANDOM_TOKEN>'`
+- Cloudflare pairing fails:
+  - Install `cloudflared` and rerun:
+    `brew install cloudflared`
 - Voice input reports missing key:
   - Set `ASR_DASHSCOPE_API_KEY` in Run Scheme environment or Info.plist
 - Build/signing issues on your machine:

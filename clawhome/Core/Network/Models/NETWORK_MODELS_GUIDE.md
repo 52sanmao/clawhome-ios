@@ -1,5 +1,7 @@
 # Core Network Models
 
+[English Version](./NETWORK_MODELS_GUIDE.en.md)
+
 状态：Active  
 最后更新：2026-02-27  
 适用范围：`clawhome/Core/Network/Models`

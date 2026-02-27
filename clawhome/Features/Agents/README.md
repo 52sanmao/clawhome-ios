@@ -1,5 +1,7 @@
 # Agents Feature Index
 
+[English Version](./README.en.md)
+
 状态：Active  
 最后更新：2026-02-27  
 适用范围：`clawhome/Features/Agents`
