@@ -534,7 +534,7 @@ struct ChatView: View {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 17, weight: .semibold))
-                    Text("Back")
+                    Text("返回")
                         .font(.system(size: 17))
                 }
                 .foregroundColor(.blue)

@@ -27,7 +27,7 @@ struct ClawHomeRootView: View {
                     .listStyle(.insetGrouped)
                 }
             }
-            .navigationTitle("ClawHome")
+            .navigationTitle("爪家")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -92,17 +92,17 @@ struct ClawHomeRootView: View {
                 )
             }
         }
-        .alert("Delete Agent?", isPresented: Binding(
+        .alert("删除代理？", isPresented: Binding(
             get: { deletingGateway != nil },
             set: { if !$0 { deletingGateway = nil } }
         )) {
-            Button("Delete", role: .destructive) {
+            Button("删除", role: .destructive) {
                 guard let deletingGateway else { return }
                 ConnectionManager.shared.removeClient(agentId: deletingGateway.id)
                 store.delete(id: deletingGateway.id)
                 self.deletingGateway = nil
             }
-            Button("Cancel", role: .cancel) {
+            Button("取消", role: .cancel) {
                 deletingGateway = nil
             }
         } message: {
@@ -111,7 +111,7 @@ struct ClawHomeRootView: View {
     }
 
     private var agentsSection: some View {
-        Section("Agents") {
+        Section("代理") {
             ForEach(store.gateways) { gateway in
                 Button {
                     activeGatewayForSessions = gateway
@@ -192,12 +192,12 @@ struct ClawHomeRootView: View {
                     Button(role: .destructive) {
                         deletingGateway = gateway
                     } label: {
-                        Label("Delete", systemImage: "trash")
+                        Label("删除", systemImage: "trash")
                     }
                     Button {
                         editingGateway = gateway
                     } label: {
-                        Label("Edit", systemImage: "pencil")
+                        Label("编辑", systemImage: "pencil")
                     }
                     .tint(.blue)
                 }
@@ -222,7 +222,7 @@ struct ClawHomeRootView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Scan OpenClaw Gateway")
+                                Text("扫描 OpenClaw 网关")
                                     .font(.headline)
                                     .foregroundStyle(.primary)
                                 Text("扫码添加第一个 Agent")
@@ -264,9 +264,9 @@ struct ClawHomeRootView: View {
     }
 
     private var recentSessionsSection: some View {
-        Section("Recent Active Sessions") {
+        Section("最近活跃会话") {
             if recentSessions.isEmpty {
-                Text("No recent sessions")
+                Text("暂无最近会话")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -284,7 +284,7 @@ struct ClawHomeRootView: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 6) {
                             HStack {
-                                Text(session.title.isEmpty ? "Untitled Session" : session.title)
+                                Text(session.title.isEmpty ? "未命名会话" : session.title)
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
@@ -368,8 +368,8 @@ private struct GatewayFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Gateway") {
-                    TextField("Display Name", text: $name)
+                Section("网关") {
+                    TextField("显示名称", text: $name)
                     TextField("wss://gateway.example/ws?secret=...", text: $rawURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -377,7 +377,7 @@ private struct GatewayFormView: View {
                 }
 
                 Section {
-                    Button("Scan QR Code") {
+                    Button("扫描二维码") {
                         showingScanner = true
                     }
                 }
@@ -393,12 +393,12 @@ private struct GatewayFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") {
+                    Button("取消") {
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Save") {
+                    Button("保存") {
                         save()
                     }
                 }
@@ -422,7 +422,7 @@ private struct GatewayFormView: View {
                             rawURL = parsed
                             validationMessage = nil
                         } else {
-                            validationMessage = "Scanned content is not a valid OpenClaw ws/wss URL."
+                            validationMessage = "扫描内容不是有效的 OpenClaw ws/wss 地址。"
                         }
                     }
                 ),
@@ -434,9 +434,9 @@ private struct GatewayFormView: View {
     private var title: String {
         switch mode {
         case .create:
-            return "Add Gateway"
+            return "添加网关"
         case .edit:
-            return "Edit Gateway"
+            return "编辑网关"
         }
     }
 
@@ -446,7 +446,7 @@ private struct GatewayFormView: View {
         let finalName = normalizedName.isEmpty ? fallbackName : normalizedName
 
         guard let parsedURL = OpenClawGatewayURLParser.parse(raw: rawURL) else {
-            validationMessage = "Please provide a valid ws:// or wss:// URL."
+            validationMessage = "请提供有效的 ws:// 或 wss:// 地址。"
             return
         }
 

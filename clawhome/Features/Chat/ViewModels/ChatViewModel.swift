@@ -338,7 +338,7 @@ class ChatViewModel: ObservableObject {
         var session = ContextGoSession(
             id: targetSessionId,
             agentId: agent.id,
-            title: "Chat with \(agent.displayName)",
+            title: "与 \(agent.displayName) 的对话",
             preview: "",
             tags: ["openclaw"],
             createdAt: Date(),
@@ -1675,14 +1675,14 @@ class ChatViewModel: ObservableObject {
         let terminal = terminalState.lowercased()
         let statusLabel: String
         if terminal == "aborted" {
-            statusLabel = "aborted"
+            statusLabel = "已中止"
         } else if terminal == "error" {
-            statusLabel = "failed"
+            statusLabel = "失败"
         } else {
-            statusLabel = "completed"
+            statusLabel = "已完成"
         }
 
-        return "Tool summary (\(statusLabel)): calls \(callCount), succeeded \(succeededCount), failed \(failedCount), unique \(uniqueToolCount), duration \(durationText)."
+        return "工具摘要（\(statusLabel)）：调用 \(callCount) 次，成功 \(succeededCount)，失败 \(failedCount)，不同工具 \(uniqueToolCount)，耗时 \(durationText)。"
     }
 
     // MARK: - Cleanup

@@ -18,7 +18,7 @@ struct MediaLinkCard: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundColor(.blue)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Attachment")
+                    Text("附件")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.primary)
                     Text(url.absoluteString)
@@ -28,7 +28,7 @@ struct MediaLinkCard: View {
                         .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
-                Text("Open")
+                Text("打开")
                     .font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
