@@ -7,12 +7,13 @@ enum OpenClawGatewayURLParser {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if isValidWebSocketURL(trimmed) {
-            return trimmed
+        if let normalized = normalizeGatewayURL(trimmed) {
+            return normalized
         }
 
-        if let decoded = trimmed.removingPercentEncoding, isValidWebSocketURL(decoded) {
-            return decoded
+        if let decoded = trimmed.removingPercentEncoding,
+           let normalized = normalizeGatewayURL(decoded) {
+            return normalized
         }
 
         if let fromURL = parseFromURLComponents(trimmed) {
@@ -33,12 +34,29 @@ enum OpenClawGatewayURLParser {
     }
 
     static func isValidWebSocketURL(_ value: String) -> Bool {
-        guard let url = URL(string: value),
-              let scheme = url.scheme?.lowercased() else {
-            return false
+        normalizeGatewayURL(value) != nil
+    }
+
+    static func normalizeGatewayURL(_ value: String) -> String? {
+        guard let components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased() else {
+            return nil
         }
 
-        return scheme == "ws" || scheme == "wss"
+        if scheme == "ws" || scheme == "wss" {
+            return components.url?.absoluteString ?? value
+        }
+
+        guard scheme == "http" || scheme == "https" else {
+            return nil
+        }
+
+        var normalized = components
+        normalized.scheme = (scheme == "https") ? "wss" : "ws"
+        if normalized.path.isEmpty {
+            normalized.path = "/"
+        }
+        return normalized.url?.absoluteString
     }
 
     private static func parseFromURLComponents(_ value: String) -> String? {

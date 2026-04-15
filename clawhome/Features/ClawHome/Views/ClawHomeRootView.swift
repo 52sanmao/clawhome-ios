@@ -370,7 +370,7 @@ private struct GatewayFormView: View {
             Form {
                 Section("网关") {
                     TextField("显示名称", text: $name)
-                    TextField("wss://gateway.example/ws?secret=...", text: $rawURL)
+                    TextField("wss://gateway.example/ws?secret=... 或 https://host/path", text: $rawURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -422,7 +422,7 @@ private struct GatewayFormView: View {
                             rawURL = parsed
                             validationMessage = nil
                         } else {
-                            validationMessage = "扫描内容不是有效的 OpenClaw ws/wss 地址。"
+                            validationMessage = "扫描内容不是有效的 OpenClaw 网关地址。支持 ws/wss 与 http/https 控制地址。"
                         }
                     }
                 ),
@@ -446,7 +446,7 @@ private struct GatewayFormView: View {
         let finalName = normalizedName.isEmpty ? fallbackName : normalizedName
 
         guard let parsedURL = OpenClawGatewayURLParser.parse(raw: rawURL) else {
-            validationMessage = "请提供有效的 ws:// 或 wss:// 地址。"
+            validationMessage = "请提供有效的网关地址。支持 ws://、wss://、http:// 或 https:// 控制地址。"
             return
         }
 

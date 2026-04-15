@@ -196,16 +196,16 @@ struct QRCodeScannerView: View {
             ManualURLInputView(
                 url: $manualURL,
                 onConfirm: { url in
-                    if isValidWebSocketURL(url) {
+                    if let normalized = OpenClawGatewayURLParser.parse(raw: url) {
                         // Haptic feedback
                         let generator = UINotificationFeedbackGenerator()
                         generator.notificationOccurred(.success)
 
-                        scannedURL = url
+                        scannedURL = normalized
                         showManualInput = false
                         dismiss()
                     } else {
-                        errorMessage = "请输入有效的 WebSocket 地址 (ws:// 或 wss://)"
+                        errorMessage = "请输入有效的网关地址（支持 ws://、wss://、http:// 或 https:// 控制地址）"
                         showError = true
                         showManualInput = false
                     }
@@ -221,9 +221,6 @@ struct QRCodeScannerView: View {
 
     // MARK: - Helper Methods
 
-    private func isValidWebSocketURL(_ url: String) -> Bool {
-        return url.hasPrefix("ws://") || url.hasPrefix("wss://")
-    }
 }
 
 // MARK: - Camera Preview
