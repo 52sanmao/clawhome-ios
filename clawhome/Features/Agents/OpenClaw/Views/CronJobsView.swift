@@ -75,6 +75,11 @@ struct CronJobsView: View {
                     .padding()
             }
 
+            Text("此页直接走 IronClaw 的 /api/routines、/api/routines/{id}/runs、/toggle 与 /trigger。若这里只有任务失败，而聊天页仍能回复，问题在 routines 接口而不是整个 App。")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.horizontal)
+
             // Jobs list
             if viewModel.jobs.isEmpty {
                 emptyState

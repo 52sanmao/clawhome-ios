@@ -23,6 +23,27 @@ class ChatViewModel: ObservableObject {
     @Published var isConnecting: Bool = false  // Connecting status
     @Published var hasActiveRuns: Bool = false  // Stop button state (runQueue not empty)
     @Published var currentThinkingLevel: String = "off"
+    @Published var connectionDiagnostics: [String] = []
+
+    var latestConnectionDiagnostic: String? {
+        connectionDiagnostics.last
+    }
+
+    private func appendConnectionDiagnostic(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        connectionDiagnostics.append("[\(timestamp)] \(message)")
+        if connectionDiagnostics.count > 80 {
+            connectionDiagnostics.removeFirst(connectionDiagnostics.count - 80)
+        }
+    }
+
+    var connectionDiagnosticsSummary: String {
+        connectionDiagnostics.joined(separator: "\n")
+    }
+
+    func clearConnectionDiagnostics() {
+        connectionDiagnostics.removeAll()
+    }
 
     // Recording state
     @Published var inputMode: InputMode = .text  // 输入模式
@@ -160,6 +181,11 @@ class ChatViewModel: ObservableObject {
         self.isConnected = clawdBotClient.isConnected
         self.isConnecting = clawdBotClient.connectionState == .connecting
         self.wasConnected = clawdBotClient.isConnected
+        appendConnectionDiagnostic("使用 HTTP IronClaw 客户端：\(self.clawdBotClient.isConnected ? "已连接" : "待连接")")
+
+        if agent == nil {
+            appendConnectionDiagnostic("当前没有专用 agent 配置，回退到默认 IronClaw 地址：\(CoreConfig.shared.openClawGatewayURL)")
+        }
 
         setupStreamingCallbacks()
         setupConnectionBindings()
@@ -167,6 +193,7 @@ class ChatViewModel: ObservableObject {
 
         // ✅ Auto-connect when ChatViewModel is created
         if !clawdBotClient.isConnected && clawdBotClient.connectionState != .connecting {
+            appendConnectionDiagnostic("准备连接 HTTP 主链路。旧 relay / WebSocket 状态不会决定聊天是否可用。")
             clawdBotClient.connect()
         }
 
@@ -188,6 +215,7 @@ class ChatViewModel: ObservableObject {
                 let previous = self.wasConnected
                 self.wasConnected = isConnected
                 self.isConnected = isConnected
+                self.appendConnectionDiagnostic(isConnected ? "HTTP 聊天主链路已连接" : "HTTP 聊天主链路已断开")
 
                 if isConnected && !previous {
                     Task { [weak self] in
@@ -201,6 +229,7 @@ class ChatViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] state in
                 self?.isConnecting = state == .connecting
+                self?.appendConnectionDiagnostic("HTTP 客户端状态变更：\(String(describing: state))")
             }
             .store(in: &cancellables)
     }
@@ -685,7 +714,8 @@ class ChatViewModel: ObservableObject {
 
         // Check connection status
         guard isConnected else {
-            errorMessage = "未连接到 IronClaw，无法发送消息"
+            errorMessage = "未连接到 IronClaw HTTP 主链路，无法发送消息"
+            appendConnectionDiagnostic("发送被阻止：HTTP 主链路未连接")
             showError = true
             return
         }
