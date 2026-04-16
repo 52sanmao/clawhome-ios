@@ -2,7 +2,7 @@
 //  ConnectionManager.swift
 //  clawhome
 //
-//  OpenClaw-only connection manager
+//  IronClaw-backed connection manager
 //
 
 import Foundation
@@ -22,7 +22,7 @@ class ConnectionManager: ObservableObject {
 
     // MARK: - Initialization
     private init() {
-        print("[ConnectionManager] Initializing OpenClaw-only manager")
+        print("[ConnectionManager] Initializing IronClaw-backed manager")
     }
 
     // MARK: - Public API

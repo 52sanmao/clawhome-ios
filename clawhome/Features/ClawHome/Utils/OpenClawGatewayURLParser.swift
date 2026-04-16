@@ -38,25 +38,24 @@ enum OpenClawGatewayURLParser {
     }
 
     static func normalizeGatewayURL(_ value: String) -> String? {
-        guard let components = URLComponents(string: value),
+        guard var components = URLComponents(string: value),
               let scheme = components.scheme?.lowercased() else {
             return nil
         }
 
-        if scheme == "ws" || scheme == "wss" {
-            return components.url?.absoluteString ?? value
-        }
-
-        guard scheme == "http" || scheme == "https" else {
+        guard scheme == "ws" || scheme == "wss" || scheme == "http" || scheme == "https" else {
             return nil
         }
 
-        var normalized = components
-        normalized.scheme = (scheme == "https") ? "wss" : "ws"
-        if normalized.path.isEmpty {
-            normalized.path = "/"
+        if components.host?.isEmpty != false {
+            return nil
         }
-        return normalized.url?.absoluteString
+
+        components.scheme = scheme
+        if (scheme == "ws" || scheme == "wss") && components.path.isEmpty {
+            components.path = "/"
+        }
+        return components.url?.absoluteString ?? value
     }
 
     private static func parseFromURLComponents(_ value: String) -> String? {

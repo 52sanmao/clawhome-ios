@@ -174,7 +174,7 @@ class ChatViewModel: ObservableObject {
             await ensureSession()
             await loadMessagesFromLocalStorage()
             await replayBufferedMessageIfNeeded()
-            await syncMessagesFromGateway()
+            await syncMessagesFromIronClaw()
         }
     }
 
@@ -191,7 +191,7 @@ class ChatViewModel: ObservableObject {
 
                 if isConnected && !previous {
                     Task { [weak self] in
-                        await self?.syncMessagesFromGateway()
+                        await self?.syncMessagesFromIronClaw()
                     }
                 }
             }
@@ -315,7 +315,7 @@ class ChatViewModel: ObservableObject {
     // MARK: - Session Management
 
     /// 确保 session 存在（创建新 session 如果不存在）
-    /// ✅ 修复：OpenClaw 是单 session agent，使用固定 session ID 避免重复创建
+    /// ✅ 修复：IronClaw 使用固定 session ID 避免重复创建
     private func ensureSession() async {
         guard let agent = agent else { return }
 
@@ -448,7 +448,7 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    private func persistGatewaySnapshot(_ snapshot: [ChatMessage]) async {
+    private func persistIronClawSnapshot(_ snapshot: [ChatMessage]) async {
         guard let storageSessionId = resolvedSessionIdForStorage() else {
             return
         }
@@ -460,7 +460,7 @@ class ChatViewModel: ObservableObject {
                 try await sessionRepository.cacheMessage(sessionMessage, to: storageSessionId)
             }
         } catch {
-            print("[ChatViewModel] Failed to persist gateway snapshot: \(error)")
+            print("[ChatViewModel] Failed to persist IronClaw snapshot: \(error)")
         }
     }
 
@@ -685,7 +685,7 @@ class ChatViewModel: ObservableObject {
 
         // Check connection status
         guard isConnected else {
-            errorMessage = "未连接到 Gateway，无法发送消息"
+            errorMessage = "未连接到 IronClaw，无法发送消息"
             showError = true
             return
         }
@@ -1075,7 +1075,7 @@ class ChatViewModel: ObservableObject {
     func startHoldToSpeakRecording() {
         // Check connection status
         guard isConnected else {
-            errorMessage = "未连接到 Gateway，无法使用语音功能"
+            errorMessage = "未连接到 IronClaw，无法使用语音功能"
             showError = true
             return
         }
@@ -1424,7 +1424,7 @@ class ChatViewModel: ObservableObject {
     func startMeetingRecording() {
         // Check connection status
         guard isConnected else {
-            errorMessage = "未连接到 Gateway，无法使用录音功能"
+            errorMessage = "未连接到 IronClaw，无法使用录音功能"
             showError = true
             return
         }
@@ -1745,8 +1745,8 @@ class ChatViewModel: ObservableObject {
 
     // MARK: - Message Sync (NEW)
 
-    /// Sync messages from Gateway using chat.history API
-    func syncMessagesFromGateway() async {
+    /// Sync messages from IronClaw using session history API
+    func syncMessagesFromIronClaw() async {
         // Prevent concurrent sync
         guard !isSyncing else {
             print("⚠️ [ChatViewModel] Sync already in progress, skipping")
@@ -1772,10 +1772,10 @@ class ChatViewModel: ObservableObject {
         }
 
         isSyncing = true
-        print("🔄 [ChatViewModel] Starting message sync from Gateway...")
+        print("🔄 [ChatViewModel] Starting message sync from IronClaw...")
 
         do {
-            // Fetch history from Gateway
+            // Fetch history from IronClaw
             let response = try await clawdBotClient.fetchChatHistory(
                 sessionKey: sessionKey,
                 limit: 200
@@ -1792,18 +1792,18 @@ class ChatViewModel: ObservableObject {
                 currentThinkingLevel = resolvedThinkingLevel
             }
 
-            print("📬 [ChatViewModel] Received \(payload.messages.count) messages from Gateway")
+            print("📬 [ChatViewModel] Received \(payload.messages.count) messages from IronClaw")
 
             await MainActor.run {
-                let gatewayMessages = payload.messages
+                let ironClawMessages = payload.messages
                     .map(convertHistoryMessage)
                     .sorted { $0.timestamp < $1.timestamp }
 
-                if !gatewayMessages.isEmpty {
-                    messages = gatewayMessages
-                    processedMessageIds = Set(gatewayMessages.map { $0.id.uuidString })
+                if !ironClawMessages.isEmpty {
+                    messages = ironClawMessages
+                    processedMessageIds = Set(ironClawMessages.map { $0.id.uuidString })
                     Task { [weak self] in
-                        await self?.persistGatewaySnapshot(gatewayMessages)
+                        await self?.persistIronClawSnapshot(ironClawMessages)
                     }
                 }
 
@@ -1841,7 +1841,7 @@ class ChatViewModel: ObservableObject {
         currentThinkingLevel = trimmedLevel
     }
 
-    /// Convert Gateway history message to ChatMessage
+    /// Convert IronClaw history message to ChatMessage
     private func convertHistoryMessage(_ historyMsg: ChatHistoryResponse.HistoryMessage) -> ChatMessage {
         let thinkingText = historyMsg.content
             .filter { $0.type == "thinking" }

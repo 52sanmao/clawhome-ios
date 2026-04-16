@@ -4,7 +4,7 @@ This guide is for users who want to:
 
 1. Build ClawHome with Xcode.
 2. Install it on a real iPhone.
-3. Pair it with a locally deployed OpenClaw Gateway.
+3. Pair it with a locally deployed IronClaw-compatible service.
 
 If you only read one doc, read this one.
 
@@ -12,21 +12,21 @@ If you only read one doc, read this one.
 
 ClawHome is a UI control client.
 
-- It does not run OpenClaw channels by itself.
-- It connects to OpenClaw Gateway over WebSocket (`ws://` / `wss://`).
-- Channel runtimes are managed by OpenClaw Gateway.
-- ClawHome controls OpenClaw through the Gateway RPC/control plane.
+- It does not run channel processes by itself.
+- It primarily connects to an IronClaw-compatible service over HTTP/SSE.
+- Channel runtimes, if present, are managed by the backend service.
+- ClawHome controls the deployment through the service control plane.
 
 Implication:
 
-- If your gateway is only reachable on localhost, your iPhone cannot reach it.
+- If your service is only reachable on localhost, your iPhone cannot reach it.
 - If you expose it over LAN/Tailscale/Cloudflare, ClawHome can connect remotely.
 
 ## 2) Prerequisites
 
 - macOS 14+, Xcode 16+.
 - iPhone with Developer Mode enabled.
-- OpenClaw installed and running on your Mac/host.
+- An IronClaw-compatible backend running on your Mac/host.
 - Optional tools:
   - `qrencode` for terminal QR display.
   - `cloudflared` for public tunnel mode.
@@ -67,7 +67,7 @@ open clawhome.xcodeproj
 
 - `Settings -> General -> VPN & Device Management -> Developer App -> Trust`.
 
-## 4) Start OpenClaw Gateway
+## 4) Start the backend service
 
 Common modes:
 
@@ -75,11 +75,13 @@ Common modes:
 - LAN mode (same Wi-Fi/LAN): gateway must bind LAN.
 - Public internet mode: use Cloudflare Tunnel or Tailscale Funnel/Serve.
 
-Example (LAN, token auth):
+Example (legacy OpenClaw-compatible LAN command, token auth):
 
 ```bash
 openclaw gateway --bind lan --auth token --token '<LONG_RANDOM_TOKEN>'
 ```
+
+If your deployment already uses native IronClaw startup commands, use the equivalent LAN-exposed command for that service.
 
 ## 5) Generate Pairing URL + QR (Recommended Script)
 

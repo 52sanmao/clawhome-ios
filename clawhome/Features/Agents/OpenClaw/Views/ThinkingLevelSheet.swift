@@ -59,7 +59,7 @@ struct ThinkingLevelSheet: View {
             }
         }
         .task {
-            await refreshThinkingLevelFromGateway()
+            await refreshThinkingLevelFromIronClaw()
         }
     }
 
@@ -156,7 +156,7 @@ struct ThinkingLevelSheet: View {
         }
     }
 
-    private func refreshThinkingLevelFromGateway() async {
+    private func refreshThinkingLevelFromIronClaw() async {
         do {
             let response = try await client.fetchChatHistory(sessionKey: sessionKey, limit: 1)
             guard let thinkingLevel = response.historyPayload?.thinkingLevel else {

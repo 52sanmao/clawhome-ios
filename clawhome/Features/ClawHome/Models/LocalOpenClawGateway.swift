@@ -34,7 +34,7 @@ struct LocalOpenClawGateway: Codable, Identifiable, Hashable {
             id: id,
             name: "openclaw-\(id.prefix(8))",
             displayName: name,
-            description: "OpenClaw Gateway",
+            description: "IronClaw endpoint",
             avatar: "OpenClawLogo",
             type: "openclaw",
             config: configString,

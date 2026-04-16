@@ -41,7 +41,7 @@ struct SkillsStatusResponse: Codable {
     }
 }
 
-// MARK: - Skill Model (matches OpenClaw Gateway actual response)
+// MARK: - Skill Model (matches current backend response)
 
 struct Skill: Codable, Identifiable {
     let name: String

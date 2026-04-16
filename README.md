@@ -3,27 +3,27 @@
 [中文说明](./README.zh-CN.md)
 [Quick Start (EN)](./docs/QUICKSTART.md) | [Quick Start (中文)](./docs/QUICKSTART.zh-CN.md)
 
-ClawHome iOS is a lightweight UI control app for OpenClaw.
-It connects to an OpenClaw Gateway over WebSocket (`ws://` / `wss://`) and focuses on session browsing + chat UI.
+ClawHome iOS is a lightweight UI control app for IronClaw-backed services.
+It primarily connects to an IronClaw HTTP endpoint and focuses on session browsing + chat UI.
 
 This repository is intentionally **UI-only**:
-- No OpenClaw server runtime is bundled here
+- No IronClaw server runtime is bundled here
 - No backend deployment logic is bundled here
 - No production credentials are committed
 
 ## Positioning
 
-ClawHome iOS is for operators who already have an OpenClaw Gateway endpoint and want a native iOS control panel.
+ClawHome iOS is for operators who already have an IronClaw-compatible endpoint and want a native iOS control panel.
 
-OpenClaw channels (WhatsApp/Telegram/etc.) run inside OpenClaw Gateway itself.
-ClawHome does not host channel runtimes. It only connects to the Gateway WebSocket RPC control plane.
-That means ClawHome can control the whole OpenClaw instance, but only when the Gateway endpoint is reachable from your phone.
+Legacy OpenClaw channels (WhatsApp/Telegram/etc.) may still run behind that service in older deployments.
+ClawHome does not host channel runtimes. It primarily connects to the service's HTTP API control surface.
+That means ClawHome can control the whole deployment, but only when the endpoint is reachable from your phone.
 
 ## Features
 
-- Multi-gateway management (add/edit/delete)
+- Multi-endpoint management (add/edit/delete)
 - QR code onboarding and manual URL entry
-- OpenClaw session list and chat UI
+- IronClaw session list and chat UI
 - Local session cache (GRDB)
 - Optional voice transcription with Alibaba DashScope ASR
 
@@ -31,7 +31,7 @@ That means ClawHome can control the whole OpenClaw instance, but only when the G
 
 - macOS 14+ and Xcode 16+
 - iOS 18.5+ Simulator or device
-- A running OpenClaw Gateway endpoint
+- A running IronClaw-compatible endpoint
 
 ## Quick Start
 
@@ -52,7 +52,7 @@ open clawhome.xcodeproj
 - On first launch, trust the developer profile on iPhone:
   `Settings -> General -> VPN & Device Management -> Developer App -> Trust`
 
-3. Start OpenClaw and generate a pairing QR
+3. Start your service and generate a pairing QR
 
 - LAN pairing:
   `scripts/openclaw-pair.sh --exposure lan`
@@ -62,11 +62,11 @@ open clawhome.xcodeproj
   `scripts/openclaw-pair.sh --exposure tailscale`
 
 The script auto-detects:
-- OpenClaw config path
+- Legacy config path (if using an OpenClaw-compatible deployment)
 - `gateway.auth.mode`
 - `gateway.auth.token` / `gateway.auth.password` (env overrides take precedence)
 
-Then it prints a ClawHome-compatible `ws://` or `wss://` URL and renders a terminal QR.
+Then it prints a ClawHome-compatible endpoint URL and renders a terminal QR.
 
 4. Scan in app
 
@@ -128,20 +128,19 @@ GitHub Actions workflow: `.github/workflows/ios-ci.yml`
 
 - `clawhome/Features/ClawHome/`: Home, gateway management, QR onboarding
 - `clawhome/Features/Chat/`: Chat UI and ViewModel
-- `clawhome/Core/Network/`: OpenClaw/WebSocket networking
+- `clawhome/Core/Network/`: IronClaw-compatible networking layer
 - `clawhome/Core/Storage/`: Local session and message storage
 - `clawhome/Core/Services/FileASRService.swift`: Optional ASR integration
 
 ## Troubleshooting
 
 - Cannot connect:
-  - Verify the gateway URL scheme is `ws://` or `wss://`
-  - Verify device/simulator can reach gateway host and port
-  - If using auth, verify `secret`/`token`/`password` query value
+  - Verify the service URL is a reachable `http://` or `https://` IronClaw endpoint
+  - Verify device/simulator can reach service host and port
+  - If using auth, verify your Bearer token or gateway secret is correct
 - LAN pairing fails with timeout:
-  - Your gateway is likely still loopback-only
-  - Restart gateway with LAN bind, then regenerate QR:
-    `openclaw gateway --bind lan --auth token --token '<LONG_RANDOM_TOKEN>'`
+  - Your service is likely still loopback-only
+  - Restart it with LAN bind, then regenerate QR for your deployment
 - Cloudflare pairing fails:
   - Install `cloudflared` and rerun:
     `brew install cloudflared`

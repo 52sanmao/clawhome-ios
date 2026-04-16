@@ -2,7 +2,7 @@
 //  OpenClawSkillsSheet.swift
 //  contextgo
 //
-//  Skills list powered by OpenClaw Gateway RPC (skills.status / skills.update)
+//  Skills list backed by IronClaw compatibility APIs
 //
 
 import SwiftUI
@@ -278,10 +278,10 @@ struct OpenClawSkillsSheet: View {
             _ = try await client.updateSkill(skillKey: skill.skillKey, enabled: shouldEnable)
             await loadSkills(showLoading: false)
         } catch {
-            if error.localizedDescription.contains("Not connected to ClawdBot") {
-                errorMessage = "网关连接中断，正在自动重连，请稍后再试"
+            if error.localizedDescription.contains("Not connected to IronClaw") {
+                errorMessage = "IronClaw 连接中断，正在自动重连，请稍后再试"
             } else {
-            errorMessage = "更新技能状态失败：\(error.localizedDescription)"
+                errorMessage = "更新技能状态失败：\(error.localizedDescription)"
             }
         }
     }

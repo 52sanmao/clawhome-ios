@@ -2,7 +2,7 @@
 //  OpenClawMessage.swift
 //  contextgo
 //
-//  OpenClaw Gateway WebSocket Protocol Messages
+//  IronClaw-compatible WebSocket protocol messages
 //
 
 import Foundation

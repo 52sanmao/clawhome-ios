@@ -2,7 +2,7 @@
 //  ChatView.swift
 //  contextgo
 //
-//  Chat interface with ClawdBot
+//  Chat interface backed by IronClaw
 //
 
 import SwiftUI

@@ -2,7 +2,7 @@
 //  WebSocketManager.swift
 //  contextgo
 //
-//  Manages WebSocket connection to OpenClaw Gateway
+//  Manages legacy WebSocket connection kept separate from the IronClaw HTTP service
 //
 
 import Foundation

@@ -222,7 +222,7 @@ struct ClawHomeRootView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("扫描 OpenClaw 网关")
+                                Text("扫描 IronClaw 地址")
                                     .font(.headline)
                                     .foregroundStyle(.primary)
                                 Text("扫码添加第一个 Agent")
@@ -236,7 +236,7 @@ struct ClawHomeRootView: View {
                                 .foregroundStyle(.blue)
                         }
 
-                        Text("支持 ws:// 或 wss://，支持二维码和手动输入。")
+                        Text("支持 http://、https://、ws:// 或 wss://，支持二维码和手动输入。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -368,9 +368,9 @@ private struct GatewayFormView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("网关") {
+                Section("IronClaw") {
                     TextField("显示名称", text: $name)
-                    TextField("wss://gateway.example/ws?secret=... 或 https://host/path", text: $rawURL)
+                    TextField("https://ironclaw.example.com 或 http://host:8642", text: $rawURL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
@@ -422,7 +422,7 @@ private struct GatewayFormView: View {
                             rawURL = parsed
                             validationMessage = nil
                         } else {
-                            validationMessage = "扫描内容不是有效的 OpenClaw 网关地址。支持 ws/wss 与 http/https 控制地址。"
+                            validationMessage = "扫描内容不是有效的 IronClaw 地址。支持 http/https，也兼容 ws/wss。"
                         }
                     }
                 ),
@@ -434,19 +434,19 @@ private struct GatewayFormView: View {
     private var title: String {
         switch mode {
         case .create:
-            return "添加网关"
+            return "添加 IronClaw"
         case .edit:
-            return "编辑网关"
+            return "编辑 IronClaw"
         }
     }
 
     private func save() {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let fallbackName = "OpenClaw \(Date().formatted(date: .omitted, time: .shortened))"
+        let fallbackName = "IronClaw \(Date().formatted(date: .omitted, time: .shortened))"
         let finalName = normalizedName.isEmpty ? fallbackName : normalizedName
 
         guard let parsedURL = OpenClawGatewayURLParser.parse(raw: rawURL) else {
-            validationMessage = "请提供有效的网关地址。支持 ws://、wss://、http:// 或 https:// 控制地址。"
+            validationMessage = "请提供有效的 IronClaw 地址。优先使用 http:// 或 https://，也兼容 ws:// 与 wss://。"
             return
         }
 

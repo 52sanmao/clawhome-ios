@@ -14,7 +14,7 @@ import UIKit
 enum CoreServerDefaults {
     static let coreEndpoint = "https://example.com"
     static let relayServerURL = "https://example.com"
-    static let openClawGatewayURL = "ws://127.0.0.1:18789"
+    static let openClawGatewayURL = "http://127.0.0.1:8642"
 }
 
 enum ASRServiceConfig {
@@ -163,7 +163,7 @@ class CoreConfig: ObservableObject {
         }
     }
 
-    /// OpenClaw 网关地址（默认兜底，仅在 Agent 未提供 wsURL 时使用）
+    /// IronClaw 地址（默认兜底，仅在 Agent 未提供 URL 时使用）
     @Published var openClawGatewayURL: String {
         didSet {
             UserDefaults.standard.set(openClawGatewayURL, forKey: "openClawGatewayURL")

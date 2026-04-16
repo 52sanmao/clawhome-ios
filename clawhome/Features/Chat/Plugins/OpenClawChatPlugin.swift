@@ -2,7 +2,7 @@
 //  OpenClawChatPlugin.swift
 //  contextgo
 //
-//  OpenClaw plugin adapter for ChatViewModel.
+//  IronClaw chat plugin adapter for ChatViewModel.
 //
 
 import Foundation
@@ -11,11 +11,11 @@ import Foundation
 final class OpenClawChatPlugin: ChatAgentPlugin {
     let id: String = "openclaw"
     let toolbarCapabilities = ChatToolbarCapabilities(
-        showsSkills: true,
+        showsSkills: false,
         showsUsageStats: true,
         showsCronJobs: true,
-        showsSettings: true,
-        showsThinkingControl: true
+        showsSettings: false,
+        showsThinkingControl: false
     )
 
     func bind(client: OpenClawClient, viewModel: ChatViewModel) {

@@ -26,12 +26,12 @@ struct QRCodeScannerView: View {
     // 根据 Agent Type 返回提示文字
     private var hintText: String {
         guard let agentType = agentType else {
-            return "支持 OpenClaw 网关加密连接"
+            return "支持 IronClaw 地址与加密连接"
         }
 
         switch agentType {
         case "OpenClaw":
-            return "支持 OpenClaw 网关加密连接"
+            return "支持 IronClaw 地址与加密连接"
         case "Claude Code":
             return "支持 Claude Code 配对连接"
         case "CodeX":
@@ -205,7 +205,7 @@ struct QRCodeScannerView: View {
                         showManualInput = false
                         dismiss()
                     } else {
-                        errorMessage = "请输入有效的网关地址（支持 ws://、wss://、http:// 或 https:// 控制地址）"
+                        errorMessage = "请输入有效的 IronClaw 地址（支持 http:// 或 https://，也兼容 ws:// 与 wss:// 扫码内容）"
                         showError = true
                         showManualInput = false
                     }
@@ -467,7 +467,7 @@ struct ManualURLInputView: View {
                             .font(.headline)
                             .foregroundColor(.primary)
 
-                        Text("请输入完整的 WebSocket 地址")
+                        Text("请输入完整的 IronClaw 地址")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
@@ -475,15 +475,15 @@ struct ManualURLInputView: View {
                 }
 
                 Section {
-                    TextField("ws://127.0.0.1:18789", text: $url)
+                    TextField("https://ironclaw.example.com", text: $url)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
                         .focused($isTextFieldFocused)
                 } header: {
-                    Text("WebSocket 地址")
+                    Text("IronClaw 地址")
                 } footer: {
-                    Text("支持 ws:// 或 wss:// 协议")
+                    Text("优先使用 http:// 或 https://；也兼容 ws:// 或 wss:// 扫码内容")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -497,10 +497,10 @@ struct ManualURLInputView: View {
 
                         VStack(alignment: .leading, spacing: 8) {
                             Button {
-                                url = "ws://127.0.0.1:18789"
+                                url = "http://127.0.0.1:8642"
                             } label: {
                                 HStack {
-                                    Text("ws://127.0.0.1:18789")
+                                    Text("http://127.0.0.1:8642")
                                         .font(.system(.caption, design: .monospaced))
                                         .foregroundColor(.blue)
                                     Spacer()
@@ -511,10 +511,10 @@ struct ManualURLInputView: View {
                             }
 
                             Button {
-                                url = "wss://gateway.example.com"
+                                url = "https://ironclaw.example.com"
                             } label: {
                                 HStack {
-                                    Text("wss://gateway.example.com")
+                                    Text("https://ironclaw.example.com")
                                         .font(.system(.caption, design: .monospaced))
                                         .foregroundColor(.blue)
                                     Spacer()

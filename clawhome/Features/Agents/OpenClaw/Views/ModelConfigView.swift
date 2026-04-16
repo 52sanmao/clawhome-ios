@@ -2,7 +2,7 @@
 //  ModelConfigView.swift
 //  contextgo
 //
-//  OpenClaw 模型配置视图 - 显示通过 config.get RPC 获取的模型配置
+//  IronClaw 模型配置视图 - 显示通过兼容配置读取接口获取的模型配置
 //
 
 import SwiftUI
@@ -478,7 +478,11 @@ class ModelConfigViewModel: ObservableObject {
             print("[ModelConfig] ✅ Updated provider \(name)")
 
         } catch {
-            errorMessage = error.localizedDescription
+            if error.localizedDescription.contains("IronClaw 当前未提供模型配置写入接口") {
+                errorMessage = "IronClaw 当前仅支持读取模型配置，暂不支持在 iOS 端写回修改。"
+            } else {
+                errorMessage = error.localizedDescription
+            }
             print("[ModelConfig] Update error: \(error)")
         }
 
@@ -526,7 +530,11 @@ class ModelConfigViewModel: ObservableObject {
             print("[ModelConfig] ✅ Updated mode to \(mode)")
 
         } catch {
-            errorMessage = error.localizedDescription
+            if error.localizedDescription.contains("IronClaw 当前未提供模型配置写入接口") {
+                errorMessage = "IronClaw 当前仅支持读取模型配置，暂不支持在 iOS 端写回修改。"
+            } else {
+                errorMessage = error.localizedDescription
+            }
             print("[ModelConfig] Mode update error: \(error)")
         }
 

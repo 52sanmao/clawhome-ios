@@ -2,14 +2,14 @@
 //  OpenClawSessionListView.swift
 //  contextgo
 //
-//  OpenClaw Agent 的 Session 列表页（支持多 Session）
+//  IronClaw Agent 的 Session 列表页（支持多 Session）
 //  ✨ iOS 高级设计风格
 //
 
 import SwiftUI
 
-/// OpenClaw 多 Session 列表页
-/// - 显示某个 OpenClaw Agent 的所有会话
+/// IronClaw 多 Session 列表页
+/// - 显示某个 IronClaw Agent 的所有会话
 /// - 提供 "New Chat" 按钮，以时间戳 sessionKey 创建新会话
 struct OpenClawSessionListView: View {
     let agent: CloudAgent
@@ -181,7 +181,7 @@ struct OpenClawSessionListView: View {
         isLoading = true
         defer { isLoading = false }
 
-        // Step 1: 连接 Gateway（如果未连接）
+        // Step 1: 连接 IronClaw（如果未连接）
         let gatewayURL: String? = (try? agent.openClawConfig())?.wsURL
         let client = connectionManager.getClient(
             for: agent.id,
@@ -190,7 +190,7 @@ struct OpenClawSessionListView: View {
 
         // 等待连接（最多 5 秒）
         if !client.isConnected {
-            print("[SessionList] 📡 Connecting to Gateway...")
+            print("[SessionList] 📡 Connecting to IronClaw...")
             client.connect()
             for _ in 0..<50 {
                 if client.isConnected {
@@ -202,14 +202,14 @@ struct OpenClawSessionListView: View {
 
         guard client.isConnected else {
             await MainActor.run {
-                errorMessage = "无法连接到 Gateway"
+                errorMessage = "无法连接到 IronClaw"
             }
             return
         }
 
         do {
-            // Step 2: 获取远程会话列表
-            print("[SessionList] 🔄 Fetching remote sessions from Gateway...")
+            // Step 2: 获取 IronClaw 会话列表
+            print("[SessionList] 🔄 Fetching remote sessions from IronClaw...")
             let response = try await client.fetchSessionsList(limit: 200, activeMinutes: 525600) // ~1 year
 
             guard let remoteSessions = response.sessions else {

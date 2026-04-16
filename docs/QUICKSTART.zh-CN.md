@@ -4,7 +4,7 @@
 
 1. 用 Xcode 编译 ClawHome。
 2. 安装到自己的 iPhone。
-3. 与本地部署的 OpenClaw Gateway 完成配对。
+3. 与本地部署的 IronClaw 兼容服务完成配对。
 
 如果只看一份文档，请看这一份。
 
@@ -12,21 +12,21 @@
 
 ClawHome 是 UI 控制客户端。
 
-- 它本身不运行 OpenClaw 的 channel 进程。
-- 它通过 WebSocket（`ws://` / `wss://`）连接 OpenClaw Gateway。
-- 各类 channel 运行时都在 OpenClaw Gateway 内。
-- ClawHome 通过 Gateway 的 RPC/控制面来控制整个 OpenClaw。
+- 它本身不运行 channel 进程。
+- 它主要通过 HTTP/SSE 连接兼容 IronClaw 的服务。
+- 各类 channel 运行时若存在，也运行在后端服务内。
+- ClawHome 通过服务控制面来控制整个部署。
 
 这意味着：
 
-- 如果 Gateway 只监听 localhost，iPhone 无法访问。
+- 如果服务只监听 localhost，iPhone 无法访问。
 - 只要通过 LAN / Tailscale / Cloudflare 暴露可达地址，ClawHome 就能远程接入。
 
 ## 2）环境准备
 
 - macOS 14+，Xcode 16+。
 - iPhone（已开启开发者模式）。
-- 你的 Mac/主机已安装并可运行 OpenClaw。
+- 你的 Mac/主机已安装并可运行 IronClaw 兼容后端。
 - 可选工具：
   - `qrencode`：终端显示二维码。
   - `cloudflared`：Cloudflare Tunnel 公网模式。
@@ -67,7 +67,7 @@ open clawhome.xcodeproj
 
 - `设置 -> 通用 -> VPN 与设备管理 -> 开发者 App -> 信任`。
 
-## 4）启动 OpenClaw Gateway
+## 4）启动后端服务
 
 常见模式：
 
@@ -75,11 +75,13 @@ open clawhome.xcodeproj
 - 局域网模式（同 Wi-Fi/LAN）：需要 LAN 绑定。
 - 公网模式：通过 Cloudflare Tunnel 或 Tailscale Funnel/Serve。
 
-示例（LAN + token 鉴权）：
+示例（旧版 OpenClaw 兼容部署的 LAN + token 鉴权命令）：
 
 ```bash
 openclaw gateway --bind lan --auth token --token '<高强度随机令牌>'
 ```
+
+如果你的部署已经改为 IronClaw 原生命令，请改用对应服务的 LAN 暴露启动命令。
 
 ## 5）生成配对地址与二维码（推荐脚本）
 
