@@ -29,6 +29,12 @@ struct ConfigGetPayload: Decodable {
     let baseHash: String?
     let providers: [String: ProviderConfig]
 
+    init(mode: String?, baseHash: String?, providers: [String: ProviderConfig]) {
+        self.mode = mode
+        self.baseHash = baseHash
+        self.providers = providers
+    }
+
     enum CodingKeys: String, CodingKey {
         case mode
         case baseHash

@@ -637,6 +637,22 @@ struct ChatHistoryResponse: Decodable {
         let toolUse: [ToolUse]?
         let toolResult: [ToolResult]?
 
+        init(
+            id: String,
+            timestamp: Int,
+            role: String,
+            content: [MessageContent],
+            toolUse: [ToolUse]? = nil,
+            toolResult: [ToolResult]? = nil
+        ) {
+            self.id = id
+            self.timestamp = timestamp
+            self.role = role
+            self.content = content
+            self.toolUse = toolUse
+            self.toolResult = toolResult
+        }
+
         enum CodingKeys: String, CodingKey {
             case id, timestamp, role, content, toolUse, toolResult
         }
