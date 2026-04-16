@@ -82,6 +82,12 @@ struct ConfigGetPayload: Decodable {
         let baseUrl: String?
         let models: [String]?
 
+        init(apiKey: String?, baseUrl: String?, models: [String]?) {
+            self.apiKey = apiKey
+            self.baseUrl = baseUrl
+            self.models = models
+        }
+
         enum CodingKeys: String, CodingKey {
             case apiKey
             case baseUrl
