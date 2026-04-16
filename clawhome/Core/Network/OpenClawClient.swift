@@ -6,6 +6,15 @@
 //
 
 import Foundation
+
+private extension JSONDecoder {
+    static let snakeCase: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        return decoder
+    }()
+}
+
 import Combine
 import UIKit
 
@@ -377,14 +386,6 @@ class OpenClawClient: ObservableObject {
             let normalized = state.lowercased()
             return normalized.contains("completed") || normalized.contains("failed") || normalized.contains("accepted")
         }
-    }
-
-    private extension JSONDecoder {
-        static let snakeCase: JSONDecoder = {
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
-            return decoder
-        }()
     }
 
     func abortChat(sessionKey: String? = nil, runId: String? = nil) async throws -> Int {
