@@ -10,6 +10,41 @@ import Combine
 import UIKit
 
 @MainActor
+final class ClawHomeLogStore: ObservableObject {
+    static let shared = ClawHomeLogStore()
+
+    @Published private(set) var entries: [String] = []
+    private let limit = 200
+
+    private init() {}
+
+    func append(_ message: String) {
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        entries.append("[\(timestamp)] \(message)")
+        if entries.count > limit {
+            entries.removeFirst(entries.count - limit)
+        }
+    }
+
+    func clear() {
+        entries.removeAll()
+    }
+
+    var exportText: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "未知"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "未知"
+        let header = [
+            "App: 爪家 / clawhome",
+            "App 版本: \(version)",
+            "Build: \(build)",
+            "",
+            "日志:",
+        ]
+        return (header + entries).joined(separator: "\n")
+    }
+}
+
+@MainActor
 class ChatViewModel: ObservableObject {
     // MARK: - Published Properties
     @Published var messages: [ChatMessage] = []
@@ -32,6 +67,7 @@ class ChatViewModel: ObservableObject {
     private func appendConnectionDiagnostic(_ message: String) {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         connectionDiagnostics.append("[\(timestamp)] \(message)")
+        ClawHomeLogStore.shared.append(message)
         if connectionDiagnostics.count > 80 {
             connectionDiagnostics.removeFirst(connectionDiagnostics.count - 80)
         }

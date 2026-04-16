@@ -3,6 +3,10 @@ import UIKit
 
 struct ClawHomeRootView: View {
     @StateObject private var store = LocalOpenClawGatewayStore.shared
+    @StateObject private var logStore = ClawHomeLogStore.shared
+
+    @State private var showLogViewer = false
+    @State private var showCopyAlert = false
 
     @State private var activeGatewayForSessions: LocalOpenClawGateway?
     @State private var activeChatEntry: ClawHomeChatEntry?
@@ -92,6 +96,48 @@ struct ClawHomeRootView: View {
                 )
             }
         }
+        .overlay(alignment: .bottomTrailing) {
+            Button {
+                showLogViewer = true
+            } label: {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(Color.blue)
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.2), radius: 10, x: 0, y: 5)
+            }
+            .padding(.trailing, 20)
+            .padding(.bottom, 90)
+            .accessibilityLabel("查看日志")
+        }
+        .sheet(isPresented: $showLogViewer) {
+            NavigationStack {
+                ScrollView {
+                    Text(logStore.exportText)
+                        .font(.system(.footnote, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+                .navigationTitle("爪家日志")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("关闭") { showLogViewer = false }
+                    }
+                    ToolbarItemGroup(placement: .topBarTrailing) {
+                        Button("清空") {
+                            logStore.clear()
+                        }
+                        Button("复制") {
+                            UIPasteboard.general.string = logStore.exportText
+                            showCopyAlert = true
+                        }
+                    }
+                }
+            }
+        }
         .alert("删除代理？", isPresented: Binding(
             get: { deletingGateway != nil },
             set: { if !$0 { deletingGateway = nil } }
@@ -107,6 +153,11 @@ struct ClawHomeRootView: View {
             }
         } message: {
             Text(deletingGateway?.name ?? "")
+        }
+        .alert("已复制日志", isPresented: $showCopyAlert) {
+            Button("确定", role: .cancel) {}
+        } message: {
+            Text("复制内容已包含 App 名称和版本。")
         }
     }
 
