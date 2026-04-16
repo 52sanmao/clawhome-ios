@@ -461,33 +461,36 @@ class OpenClawClient: ObservableObject {
     }
 
     func fetchCronJobs(includeDisabled: Bool = false) async throws -> [CronJob] {
-        let payload = try await invokeTool(name: "cron_list", arguments: ["include_disabled": includeDisabled])
-        let jobs = payload["jobs"] as? [[String: Any]] ?? []
-        let data = try JSONSerialization.data(withJSONObject: jobs)
-        return try JSONDecoder().decode([CronJob].self, from: data)
+        let request = try makeRequest(path: "/api/routines", method: "GET")
+        let (data, response) = try await session.data(for: request)
+        try validate(response, data: data)
+        let decoded = try JSONDecoder.snakeCase.decode(RoutineListResponseDTO.self, from: data)
+        return decoded.routines.compactMap { routine in
+            if !includeDisabled, routine.enabled == false {
+                return nil
+            }
+            return CronJob(dto: routine)
+        }
     }
 
     func fetchCronStatus() async throws -> CronStatus {
         let jobs = try await fetchCronJobs(includeDisabled: true)
-        let nextWake = jobs.map { Int64($0.updatedAtMs) }.min()
-        return CronStatus(enabled: !jobs.isEmpty, storePath: nil, jobs: jobs.count, nextWakeAtMs: nextWake)
+        let nextWake = jobs.compactMap { $0.state.nextWakeAtMs }.min()
+        let enabledJobs = jobs.filter { $0.state.lastRunStatus != "disabled" }
+        return CronStatus(enabled: !enabledJobs.isEmpty, storePath: nil, jobs: jobs.count, nextWakeAtMs: nextWake)
     }
 
     func fetchCronRuns(jobId: String, limit: Int? = nil) async throws -> [CronRunEntry] {
-        let payload = try await invokeTool(name: "cron_runs_read", arguments: ["job_id": jobId, "limit": limit ?? 20])
-        let entries = (payload["runs"] as? [[String: Any]] ?? []).map { raw -> [String: Any] in
-            [
-                "ts": raw["startedAt"] as? Int64 ?? Int64(Date().timeIntervalSince1970 * 1000),
-                "jobId": raw["jobId"] as? String ?? jobId,
-                "action": "finished",
-                "status": raw["status"] as? String ?? "ok",
-                "summary": raw["error"] as? String,
-                "runAtMs": raw["startedAt"] as? Int64 ?? Int64(Date().timeIntervalSince1970 * 1000),
-                "durationMs": raw["durationMs"] as? Int ?? 0,
-            ]
+        let escapedJobId = jobId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? jobId
+        let request = try makeRequest(path: "/api/routines/\(escapedJobId)/runs", method: "GET")
+        let (data, response) = try await session.data(for: request)
+        try validate(response, data: data)
+        let decoded = try JSONDecoder.snakeCase.decode(RoutineRunsResponseDTO.self, from: data)
+        let runs = decoded.runs.map { CronRunEntry(dto: $0, fallbackJobId: jobId) }
+        if let limit {
+            return Array(runs.prefix(limit))
         }
-        let data = try JSONSerialization.data(withJSONObject: entries)
-        return try JSONDecoder().decode([CronRunEntry].self, from: data)
+        return runs
     }
 
     func addCronJob(id: String, schedule: String, action: CronAction, enabled: Bool = true) async throws {
@@ -495,10 +498,17 @@ class OpenClawClient: ObservableObject {
     }
 
     func updateCronJob(id: String, patch: CronJobPatch) async throws {
-        var args: [String: Any] = ["id": id]
-        if let enabled = patch.enabled { args["enabled"] = enabled }
-        if let schedule = patch.schedule { args["schedule"] = schedule }
-        _ = try await invokeTool(name: "cron_update", arguments: args)
+        guard patch.schedule == nil, let enabled = patch.enabled else {
+            throw OpenClawError.requestFailed("IronClaw 当前仅支持启用或停用现有任务")
+        }
+        let escapedJobId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        let request = try makeRequest(
+            path: "/api/routines/\(escapedJobId)/toggle",
+            method: "POST",
+            jsonBody: ["enabled": enabled]
+        )
+        let (data, response) = try await session.data(for: request)
+        try validate(response, data: data)
     }
 
     func removeCronJob(id: String) async throws {
@@ -506,8 +516,27 @@ class OpenClawClient: ObservableObject {
     }
 
     func runCronJob(id: String, mode: String = "force") async throws {
-        let result = try await invokeTool(name: "cron_run", arguments: ["id": id, "mode": mode])
-        let event = CronEvent(type: "event", event: "cron", payload: .init(jobId: id, action: "finished", runAtMs: Int64(Date().timeIntervalSince1970 * 1000), status: result["ran"] as? Bool == true ? "ok" : "error", summary: result["reason"] as? String, durationMs: nil), seq: nil)
+        let escapedJobId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        let request = try makeRequest(
+            path: "/api/routines/\(escapedJobId)/trigger",
+            method: "POST",
+            jsonBody: ["mode": mode]
+        )
+        let (data, response) = try await session.data(for: request)
+        try validate(response, data: data)
+        let event = CronEvent(
+            type: "event",
+            event: "cron",
+            payload: .init(
+                jobId: id,
+                action: "finished",
+                runAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+                status: "ok",
+                summary: nil,
+                durationMs: nil
+            ),
+            seq: nil
+        )
         onCronEvent?(event)
     }
 

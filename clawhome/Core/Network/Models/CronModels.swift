@@ -28,6 +28,43 @@ struct CronJob: Codable, Identifiable {
     var updatedAt: Date {
         Date(timeIntervalSince1970: Double(updatedAtMs) / 1000)
     }
+
+    init(dto: RoutineJobDTO) {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let lastRunMs = Self.timestampMs(from: dto.lastRunAt)
+        id = dto.id
+        agentId = dto.actionType ?? "ironclaw"
+        name = dto.name
+        createdAtMs = lastRunMs ?? nowMs
+        updatedAtMs = lastRunMs ?? nowMs
+        schedule = CronSchedule(
+            kind: dto.triggerType ?? "routine",
+            expr: dto.triggerSummary ?? dto.triggerRaw ?? dto.description ?? dto.name,
+            tz: dto.timezone ?? TimeZone.current.identifier
+        )
+        sessionTarget = dto.actionType ?? "routine"
+        wakeMode = dto.triggerType ?? "schedule"
+        payload = CronPayload(kind: dto.actionType ?? "routine", text: dto.description)
+        state = CronState(
+            lastRunStatus: dto.status,
+            consecutiveErrors: dto.consecutiveFailures,
+            nextWakeAtMs: Self.timestampMs(from: dto.nextFireAt)
+        )
+    }
+
+    private static func timestampMs(from value: String?) -> Int64? {
+        guard let value, !value.isEmpty else { return nil }
+        if let numeric = Double(value) {
+            if numeric > 10_000_000_000 {
+                return Int64(numeric)
+            }
+            return Int64(numeric * 1000)
+        }
+        if let date = ISO8601DateFormatter().date(from: value) {
+            return Int64(date.timeIntervalSince1970 * 1000)
+        }
+        return nil
+    }
 }
 
 struct CronSchedule: Codable {
@@ -42,7 +79,67 @@ struct CronPayload: Codable {
 }
 
 struct CronState: Codable {
-    // Empty object in current API response
+    let lastRunStatus: String?
+    let consecutiveErrors: Int?
+    let nextWakeAtMs: Int64?
+
+    init(lastRunStatus: String? = nil, consecutiveErrors: Int? = nil, nextWakeAtMs: Int64? = nil) {
+        self.lastRunStatus = lastRunStatus
+        self.consecutiveErrors = consecutiveErrors
+        self.nextWakeAtMs = nextWakeAtMs
+    }
+}
+
+struct RoutineListResponseDTO: Codable {
+    let routines: [RoutineJobDTO]
+}
+
+struct RoutineJobDTO: Codable {
+    let id: String
+    let name: String
+    let description: String?
+    let enabled: Bool?
+    let triggerType: String?
+    let triggerRaw: String?
+    let triggerSummary: String?
+    let actionType: String?
+    let lastRunAt: String?
+    let nextFireAt: String?
+    let consecutiveFailures: Int?
+    let status: String?
+    let verificationStatus: String?
+    let timezone: String?
+}
+
+struct RoutineRunsResponseDTO: Codable {
+    let routineId: String
+    let runs: [RoutineRunDTO]
+}
+
+struct RoutineRunDTO: Codable {
+    let id: String
+    let jobId: String?
+    let triggerType: String?
+    let startedAt: String?
+    let completedAt: String?
+    let status: String?
+    let resultSummary: String?
+    let error: String?
+    let tokensUsed: Int?
+
+    fileprivate static func timestampMs(from value: String?) -> Int64? {
+        guard let value, !value.isEmpty else { return nil }
+        if let numeric = Double(value) {
+            if numeric > 10_000_000_000 {
+                return Int64(numeric)
+            }
+            return Int64(numeric * 1000)
+        }
+        if let date = ISO8601DateFormatter().date(from: value) {
+            return Int64(date.timeIntervalSince1970 * 1000)
+        }
+        return nil
+    }
 }
 
 // MARK: - Cron Event (WebSocket)
@@ -142,7 +239,24 @@ struct CronRunEntry: Codable, Identifiable {
     }
 
     var isSuccess: Bool {
-        status == "ok"
+        status == "ok" || status == "success" || status == "succeeded"
+    }
+
+    init(dto: RoutineRunDTO, fallbackJobId: String) {
+        let startedAtMs = RoutineRunDTO.timestampMs(from: dto.startedAt)
+        let completedAtMs = RoutineRunDTO.timestampMs(from: dto.completedAt)
+        let timestamp = startedAtMs ?? completedAtMs ?? Int64(Date().timeIntervalSince1970 * 1000)
+        ts = timestamp
+        jobId = dto.jobId ?? fallbackJobId
+        action = "finished"
+        status = dto.status ?? "ok"
+        summary = dto.resultSummary ?? dto.error
+        runAtMs = timestamp
+        if let startedAtMs, let completedAtMs {
+            durationMs = max(0, Int(completedAtMs - startedAtMs))
+        } else {
+            durationMs = nil
+        }
     }
 }
 
