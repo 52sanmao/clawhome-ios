@@ -65,12 +65,12 @@ jobs:
           mkdir -p "$RUNNER_TEMP/Payload"
           cp -R "$APP_PATH" "$RUNNER_TEMP/Payload/"
           cd "$RUNNER_TEMP"
-          zip -r "clawhome-爪家.ipa" Payload
-          echo "IPA created at $RUNNER_TEMP/clawhome-爪家.ipa"
+          zip -r "爪家-ircon1.ipa" Payload
+          echo "IPA created at $RUNNER_TEMP/爪家-ircon1.ipa"
 
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: clawhome-爪家-IPA
-          path: ${{ runner.temp }}/clawhome-爪家.ipa
+          name: 爪家-ircon1-IPA
+          path: ${{ runner.temp }}/爪家-ircon1.ipa
           retention-days: 30
