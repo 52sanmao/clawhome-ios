@@ -29,15 +29,21 @@ class ConnectionManager: ObservableObject {
 
     /// Get or create OpenClawClient for a specific agent.
     func getClient(for agentId: String, gatewayURL: String? = nil, token: String? = nil) -> OpenClawClient {
-        let trimmedToken = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let parsedGateway = gatewayURL.map { CoreConfig.parseGatewayConfiguration(endpoint: $0) }
+        let normalizedGatewayURL = parsedGateway?.baseURL
+        let extractedToken = parsedGateway?.token
+        let trimmedToken = (token?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+            ? token?.trimmingCharacters(in: .whitespacesAndNewlines)
+            : extractedToken) ?? ""
         if let existingClient = clients[agentId] {
             if !trimmedToken.isEmpty {
                 CoreConfig.shared.saveJWT(trimmedToken)
+                print("[ConnectionManager] Reusing client for \(agentId) with refreshed token source=\(token?.isEmpty == false ? "agent-specific" : "url-query")")
             }
             return existingClient
         }
 
-        let gatewayURLString = gatewayURL ?? CoreConfig.shared.openClawGatewayURL
+        let gatewayURLString = normalizedGatewayURL ?? CoreConfig.shared.openClawGatewayURL
         if !trimmedToken.isEmpty {
             CoreConfig.shared.saveJWT(trimmedToken)
         }
@@ -47,7 +53,11 @@ class ConnectionManager: ObservableObject {
             }
             return CoreConfig.shared.jwtToken
         }
-        let tokenLabel = !trimmedToken.isEmpty ? "agent-specific token" : "CoreConfig.shared.jwtToken"
+        let tokenLabel = !trimmedToken.isEmpty
+            ? (token?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? "agent-specific token" : "url-query token")
+            : "CoreConfig.shared.jwtToken"
+
+        print("[ConnectionManager] Preparing client agent=\(agentId) gateway=\(gatewayURLString) tokenLabel=\(tokenLabel)")
 
         guard let url = URL(string: gatewayURLString) else {
             let defaultURL = URL(string: CoreConfig.shared.openClawGatewayURL)!
@@ -63,7 +73,15 @@ class ConnectionManager: ObservableObject {
         return client
     }
 
+
     func connect(agentId: String, gatewayURL: String? = nil, token: String? = nil) {
+        if let gatewayURL {
+            let parsed = CoreConfig.parseGatewayConfiguration(endpoint: gatewayURL)
+            if let extractedToken = parsed.token, !extractedToken.isEmpty, (token ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                CoreConfig.shared.saveJWT(extractedToken)
+                print("[ConnectionManager] Extracted token from gateway URL for agent=\(agentId)")
+            }
+        }
         let client = getClient(for: agentId, gatewayURL: gatewayURL, token: token)
         client.connect()
     }

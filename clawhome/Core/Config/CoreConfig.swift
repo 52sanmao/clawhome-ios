@@ -78,6 +78,49 @@ class CoreConfig: ObservableObject {
         return components.url
     }
 
+    static func parseGatewayConfiguration(endpoint raw: String) -> (baseURL: String, token: String?) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return ("", nil)
+        }
+
+        let withScheme: String
+        if trimmed.lowercased().hasPrefix("http://") || trimmed.lowercased().hasPrefix("https://") {
+            withScheme = trimmed
+        } else {
+            withScheme = "https://\(trimmed)"
+        }
+
+        guard var components = URLComponents(string: withScheme),
+              let host = components.host,
+              !host.isEmpty,
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https" else {
+            return (normalizeEndpoint(raw), nil)
+        }
+
+        let token = components.queryItems?.first(where: { $0.name.lowercased() == "token" })?.value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        components.scheme = scheme
+        components.host = host.lowercased()
+        components.user = nil
+        components.password = nil
+        components.path = ""
+        components.query = nil
+        components.fragment = nil
+
+        var normalized = "\(scheme)://\(host.lowercased())"
+        if let port = components.port {
+            let defaultPort = (scheme == "https") ? 443 : 80
+            if port != defaultPort {
+                normalized += ":\(port)"
+            }
+        }
+
+        return (normalized, token?.isEmpty == true ? nil : token)
+    }
+
     static func composeURL(endpoint raw: String, path: String) -> URL? {
         guard let baseURL = endpointBaseURL(from: raw),
               var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {

@@ -346,7 +346,7 @@ class OpenClawClient: ObservableObject {
 
             let baselineHistory = try await fetchThreadHistory(threadId: threadId)
             let baselineTurnCount = baselineHistory.turns.count
-            logChatState(runId: runId, sessionKey: sessionKey, state: "history_baseline", detail: "thread=\(threadId) turns=\(baselineTurnCount)")
+            logChatState(runId: runId, sessionKey: sessionKey, state: "history_baseline", detail: "thread=\(threadId) turns=\(baselineTurnCount) host=\(baseURL.host ?? "unknown")")
             let content = composeThreadMessageContent(message: message, attachments: attachments)
 
             try await postThreadMessage(content: content, threadId: threadId)
@@ -373,7 +373,8 @@ class OpenClawClient: ObservableObject {
         } catch {
             let message = error.localizedDescription
             markBufferedError(sessionKey: sessionKey, message: message)
-            logChatState(runId: runId, sessionKey: sessionKey, state: "error", detail: message)
+            let tokenLoaded = !tokenProvider().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            logChatState(runId: runId, sessionKey: sessionKey, state: "error", detail: "host=\(baseURL.host ?? "unknown") tokenLoaded=\(tokenLoaded) \(message)")
             onChatStateEvent?(ChatStateEvent(runId: runId, sessionKey: sessionKey, state: "error", text: nil, thinking: nil, stopReason: nil, errorMessage: message))
             onLifecycleError?(runId, message)
             onAgentError?(message)
@@ -1122,6 +1123,36 @@ class OpenClawClient: ObservableObject {
         }
     }
 
+
+    func validateGatewayConnection(testMessage: String = "ping") async throws -> (summary: String, details: [String]) {
+        log("开始执行完整聊天主链路验证 baseURL=\(baseURL.absoluteString)")
+        do {
+            let models = try await fetchModels()
+            var details: [String] = ["模型接口 /v1/models 可达 count=\(models.count)"]
+
+            let thread = try await createThread()
+            let trimmedThreadId = thread.id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedThreadId.isEmpty else {
+                throw OpenClawError.requestFailed("/api/chat/thread/new 已成功返回，但 thread id 为空")
+            }
+            details.append("线程创建成功: \(trimmedThreadId)")
+
+            let baselineHistory = try await fetchThreadHistory(threadId: trimmedThreadId)
+            details.append("历史读取成功，当前共有 \(baselineHistory.turns.count) 条 turn")
+
+            try await postThreadMessage(content: testMessage, threadId: trimmedThreadId)
+            details.append("消息发送成功: /api/chat/send")
+
+            let poll = try await waitForThreadTurn(threadId: trimmedThreadId, afterTurnCount: baselineHistory.turns.count, timeout: 20)
+            let reply = (poll.latestTurn.response ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            details.append(reply.isEmpty ? "历史轮询成功，但最新回复为空" : "历史轮询成功，已收到回复")
+            log("完整聊天主链路验证成功 thread=\(trimmedThreadId)")
+            return ("聊天主链路可用：已完成模型探活、线程创建、发送消息与历史轮询。", details)
+        } catch {
+            logFailure("完整聊天主链路验证失败", endpoint: "chat-mainline", error: error)
+            throw error
+        }
+    }
 
     private func fetchModels() async throws -> [IronClawModel] {
         log("开始探测模型列表 /v1/models")

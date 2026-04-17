@@ -204,9 +204,9 @@ struct OpenClawSessionListView: View {
         }
 
         guard client.isConnected else {
-            ClawHomeLogStore.shared.append("会话列表页连接失败 agent=\(agent.displayName) gateway=\(gatewayURL ?? "unknown") tokenLoaded=\(!(gatewayToken ?? "").isEmpty)")
+            ClawHomeLogStore.shared.append("会话列表页连接失败 agent=\(agent.displayName) gateway=\(gatewayURL ?? "unknown") tokenLoaded=\(!(gatewayToken ?? "").isEmpty) note=聊天主链路与扩展 sessions_list 可能分别失败")
             await MainActor.run {
-                errorMessage = "无法连接到 IronClaw：请检查该 Agent 的地址或 Token。"
+                errorMessage = "无法连接到 IronClaw：请检查该 Agent 的地址或 Token。若聊天可用而会话页失败，通常是 sessions_list 扩展接口未启用。"
             }
             return
         }

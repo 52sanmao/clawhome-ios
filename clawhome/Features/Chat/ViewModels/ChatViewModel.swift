@@ -229,12 +229,7 @@ class ChatViewModel: ObservableObject {
         self.isConnecting = clawdBotClient.connectionState == .connecting
         self.wasConnected = clawdBotClient.isConnected
         appendConnectionDiagnostic("使用 HTTP IronClaw 客户端：\(self.clawdBotClient.isConnected ? "已连接" : "待连接")")
-        if let gateway = gatewayURL, !gateway.isEmpty {
-            appendConnectionDiagnostic("当前网关地址：\(gateway)")
-        }
-        if let gatewayToken, !gatewayToken.isEmpty {
-            appendConnectionDiagnostic("当前网关 Token 已装载（长度 \(gatewayToken.count)）")
-        }
+            appendConnectionDiagnostic("已装载 agent 专用网关配置 gateway=\(gateway) tokenLoaded=\(!gatewayToken.isEmpty)")
 
         if agent == nil {
             appendConnectionDiagnostic("当前没有专用 agent 配置，回退到默认 IronClaw 地址：\(CoreConfig.shared.openClawGatewayURL)")
@@ -269,6 +264,9 @@ class ChatViewModel: ObservableObject {
                 self.wasConnected = isConnected
                 self.isConnected = isConnected
                 self.appendConnectionDiagnostic(isConnected ? "HTTP 聊天主链路已连接" : "HTTP 聊天主链路已断开")
+                if isConnected {
+                    self.appendConnectionDiagnostic("如会话页或工具页仍失败，请检查是否是扩展接口（sessions_list / tools/invoke）未启用。")
+                }
 
                 if isConnected && !previous {
                     Task { [weak self] in
