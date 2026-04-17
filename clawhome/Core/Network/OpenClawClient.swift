@@ -460,8 +460,15 @@ class OpenClawClient: ObservableObject {
         do {
             let (data, response) = try await session.data(for: request)
             try validate(response, data: data, endpoint: "/api/chat/history")
-            let decoded = try JSONDecoder.snakeCase.decode(IronClawThreadHistoryResponse.self, from: data)
-            return decoded
+            do {
+                let decoded = try JSONDecoder.snakeCase.decode(IronClawThreadHistoryResponse.self, from: data)
+                log("聊天历史解码成功 thread=\(threadId) turns=\(decoded.turns.count) hasMore=\(decoded.hasMore)")
+                return decoded
+            } catch {
+                let preview = String(data: data.prefix(800), encoding: .utf8) ?? "<non-utf8 body size=\(data.count)>"
+                log("聊天历史解码失败 thread=\(threadId) bodyPreview=\(preview)")
+                throw OpenClawError.requestFailed("/api/chat/history 返回 200，但响应结构与客户端预期不一致：\(error.localizedDescription)")
+            }
         } catch {
             logFailure("拉取聊天历史失败 thread=\(threadId)", endpoint: "/api/chat/history", error: error)
             throw error
@@ -704,6 +711,13 @@ class OpenClawClient: ObservableObject {
             case turns
             case hasMore = "has_more"
         }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            threadId = try container.decodeIfPresent(String.self, forKey: .threadId) ?? ""
+            turns = try container.decodeIfPresent([IronClawThreadTurn].self, forKey: .turns) ?? []
+            hasMore = try container.decodeIfPresent(Bool.self, forKey: .hasMore) ?? false
+        }
     }
 
     private struct IronClawThreadTurn: Decodable {
@@ -723,9 +737,20 @@ class OpenClawClient: ObservableObject {
             case completedAt = "completed_at"
         }
 
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            turnNumber = try container.decodeIfPresent(Int.self, forKey: .turnNumber)
+            userInput = try container.decodeIfPresent(String.self, forKey: .userInput) ?? ""
+            response = try container.decodeIfPresent(String.self, forKey: .response)
+            state = try container.decodeIfPresent(String.self, forKey: .state) ?? ""
+            startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
+            completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
+            error = try container.decodeIfPresent(String.self, forKey: .error)
+        }
+
         var isTerminal: Bool {
             let normalized = state.lowercased()
-            return normalized.contains("completed") || normalized.contains("failed") || normalized.contains("accepted")
+            return normalized.contains("completed") || normalized.contains("done") || normalized.contains("failed")
         }
     }
 

@@ -415,7 +415,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "爪家-ircon1";
+				INFOPLIST_KEY_CFBundleDisplayName = "爪家";
 				INFOPLIST_KEY_CFBundleURLTypes = "{\"CFBundleTypeRole\" => \"Editor\", \"CFBundleURLName\" => \"clawhome.ios\", \"CFBundleURLSchemes\" => [\"clawhome\", \"ctxgo\"]}";
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "需要相机权限以扫描 OpenClaw 网关二维码";
@@ -450,7 +450,7 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "爪家-ircon1";
+				INFOPLIST_KEY_CFBundleDisplayName = "爪家";
 				INFOPLIST_KEY_CFBundleURLTypes = "{\"CFBundleTypeRole\" => \"Editor\", \"CFBundleURLName\" => \"clawhome.ios\", \"CFBundleURLSchemes\" => [\"clawhome\", \"ctxgo\"]}";
 				INFOPLIST_KEY_LSApplicationCategoryType = "";
 				INFOPLIST_KEY_NSCameraUsageDescription = "需要相机权限以扫描 OpenClaw 网关二维码";
