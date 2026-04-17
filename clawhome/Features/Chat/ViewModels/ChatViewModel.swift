@@ -229,7 +229,9 @@ class ChatViewModel: ObservableObject {
         self.isConnecting = clawdBotClient.connectionState == .connecting
         self.wasConnected = clawdBotClient.isConnected
         appendConnectionDiagnostic("使用 HTTP IronClaw 客户端：\(self.clawdBotClient.isConnected ? "已连接" : "待连接")")
-            appendConnectionDiagnostic("已装载 agent 专用网关配置 gateway=\(gateway) tokenLoaded=\(!gatewayToken.isEmpty)")
+        if let gateway = gatewayURL, !gateway.isEmpty {
+            appendConnectionDiagnostic("已装载 agent 专用网关配置 gateway=\(gateway) tokenLoaded=\(!(gatewayToken ?? "").isEmpty)")
+        }
 
         if agent == nil {
             appendConnectionDiagnostic("当前没有专用 agent 配置，回退到默认 IronClaw 地址：\(CoreConfig.shared.openClawGatewayURL)")
