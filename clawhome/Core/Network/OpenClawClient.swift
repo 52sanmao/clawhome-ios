@@ -114,7 +114,14 @@ class OpenClawClient: ObservableObject {
 
     private func endpoint(_ path: String) -> URL {
         var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)!
-        components.path = path
+        if let questionMark = path.firstIndex(of: "?") {
+            components.path = String(path[..<questionMark])
+            let queryStart = path.index(after: questionMark)
+            components.percentEncodedQuery = String(path[queryStart...])
+        } else {
+            components.path = path
+            components.query = nil
+        }
         return components.url!
     }
 
@@ -596,7 +603,7 @@ class OpenClawClient: ObservableObject {
     }
 
     private func makeThreadSessionPayload(thread: IronClawThreadInfo, sessionKey: String, fallbackTitle: String) -> [String: Any] {
-        let title = fallbackTitle(for: thread)
+        let title = fallbackTitle
         return [
             "key": sessionKey,
             "kind": threadKind(for: thread),
@@ -676,6 +683,46 @@ class OpenClawClient: ObservableObject {
             case updatedAt = "updated_at"
             case threadType = "thread_type"
         }
+    }
+
+    private struct IronClawThreadHistoryResponse: Decodable {
+        let threadId: String
+        let turns: [IronClawThreadTurn]
+        let hasMore: Bool
+
+        enum CodingKeys: String, CodingKey {
+            case threadId = "thread_id"
+            case turns
+            case hasMore = "has_more"
+        }
+    }
+
+    private struct IronClawThreadTurn: Decodable {
+        let turnNumber: Int?
+        let userInput: String
+        let response: String?
+        let state: String
+        let startedAt: String?
+        let completedAt: String?
+        let error: String?
+
+        enum CodingKeys: String, CodingKey {
+            case turnNumber = "turn_number"
+            case userInput = "user_input"
+            case response, state, error
+            case startedAt = "started_at"
+            case completedAt = "completed_at"
+        }
+
+        var isTerminal: Bool {
+            let normalized = state.lowercased()
+            return normalized.contains("completed") || normalized.contains("failed") || normalized.contains("accepted")
+        }
+    }
+
+    private struct ThreadPollResult {
+        let history: IronClawThreadHistoryResponse
+        let latestTurn: IronClawThreadTurn
     }
 
     func abortChat(sessionKey: String? = nil, runId: String? = nil) async throws -> Int {
