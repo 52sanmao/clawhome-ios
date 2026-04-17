@@ -590,11 +590,11 @@ class OpenClawClient: ObservableObject {
             let (data, response) = try await session.data(for: request)
             try validate(response, data: data, endpoint: "/api/routines")
             let decoded = try JSONDecoder.snakeCase.decode(RoutineListResponseDTO.self, from: data)
-            let jobs = decoded.routines.compactMap { routine in
+            let jobs: [CronJob] = decoded.routines.reduce(into: []) { partial, routine in
                 if !includeDisabled, routine.enabled == false {
-                    return nil
+                    return
                 }
-                return CronJob(dto: routine)
+                partial.append(CronJob(dto: routine))
             }
             log("routines 列表刷新成功 count=\(jobs.count)")
             return jobs
