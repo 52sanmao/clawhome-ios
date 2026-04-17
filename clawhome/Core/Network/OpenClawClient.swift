@@ -508,32 +508,173 @@ class OpenClawClient: ObservableObject {
         return Int(date.timeIntervalSince1970 * 1000)
     }
 
-    private struct ThreadPollResult {
-        let history: IronClawThreadHistoryResponse
-        let latestTurn: IronClawThreadTurn
+    private func threadListPayload(limit: Int, activeMinutes: Int) async throws -> SessionsListResponse {
+        _ = activeMinutes
+        let listing = try await fetchThreadList()
+        var sessions: [[String: Any]] = []
+
+        if let assistant = listing.assistantThread {
+            let sessionKey = "agent:main:operator:default"
+            threadIDsBySessionKey[sessionKey] = assistant.id
+            sessions.append(makeThreadSessionPayload(thread: assistant, sessionKey: sessionKey, fallbackTitle: "主会话"))
+        }
+
+        for thread in listing.threads {
+            let sessionKey = derivedSessionKey(for: thread)
+            threadIDsBySessionKey[sessionKey] = thread.id
+            if sessions.contains(where: { ($0["key"] as? String) == sessionKey }) {
+                continue
+            }
+            sessions.append(makeThreadSessionPayload(thread: thread, sessionKey: sessionKey, fallbackTitle: fallbackTitle(for: thread)))
+        }
+
+        let sorted = sessions.sorted { (($0["updatedAt"] as? Int) ?? 0) > (($1["updatedAt"] as? Int) ?? 0) }
+        let limited = Array(sorted.prefix(limit))
+        let responseJSON: [String: Any] = [
+            "type": "res",
+            "ok": true,
+            "id": UUID().uuidString,
+            "payload": [
+                "sessions": limited,
+            ],
+        ]
+        let data = try JSONSerialization.data(withJSONObject: responseJSON)
+        let response = try JSONDecoder().decode(SessionsListResponse.self, from: data)
+        log("sessions 列表通过线程回退生成 count=\(response.sessions?.count ?? 0)")
+        return response
+    }
+
+    private func fetchThreadList() async throws -> IronClawThreadListResponse {
+        let request = try makeRequest(path: "/api/chat/threads", method: "GET")
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/chat/threads")
+            let decoded = try JSONDecoder.snakeCase.decode(IronClawThreadListResponse.self, from: data)
+            log("读取线程列表成功 count=\(decoded.threads.count) assistant=\(decoded.assistantThread?.id ?? "none")")
+            return decoded
+        } catch {
+            logFailure("读取线程列表失败", endpoint: "/api/chat/threads", error: error)
+            throw error
+        }
+    }
+
+    private func derivedSessionKey(for thread: IronClawThreadInfo) -> String {
+        switch thread.threadType?.lowercased() {
+        case "assistant":
+            return "agent:main:operator:default"
+        case "routine":
+            return "agent:main:cron:\(thread.id)"
+        default:
+            return thread.id
+        }
+    }
+
+    private func fallbackTitle(for thread: IronClawThreadInfo) -> String {
+        let title = thread.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !title.isEmpty {
+            return title
+        }
+        switch thread.threadType?.lowercased() {
+        case "assistant":
+            return "主会话"
+        case "routine":
+            return "定时任务线程"
+        default:
+            return "聊天线程 \(thread.id.prefix(8))"
+        }
+    }
+
+    private func threadKind(for thread: IronClawThreadInfo) -> String {
+        switch thread.threadType?.lowercased() {
+        case "routine":
+            return "cron"
+        case "assistant":
+            return "main"
+        default:
+            return thread.channel?.lowercased() == "routine" ? "cron" : "direct"
+        }
+    }
+
+    private func makeThreadSessionPayload(thread: IronClawThreadInfo, sessionKey: String, fallbackTitle: String) -> [String: Any] {
+        let title = fallbackTitle(for: thread)
+        return [
+            "key": sessionKey,
+            "kind": threadKind(for: thread),
+            "displayName": title,
+            "updatedAt": Self.timestampMs(from: thread.updatedAt),
+            "sessionId": thread.id,
+            "channel": thread.channel ?? "gateway",
+            "totalTokens": 0,
+            "derivedTitle": title,
+            "label": title,
+            "lastMessage": title,
+            "turnCount": thread.turnCount ?? 0,
+            "state": thread.state ?? "idle",
+        ]
+    }
+
+    private func fallbackChatHistory(sessionKey: String, limit: Int) async throws -> ChatHistoryResponse? {
+        let threadId: String
+        if let existing = threadIDsBySessionKey[sessionKey] ?? (UUID(uuidString: sessionKey) != nil ? sessionKey : nil) {
+            threadId = existing
+        } else if sessionKey.hasPrefix("agent:main:operator:") {
+            let listing = try await fetchThreadList()
+            guard let assistant = listing.assistantThread ?? listing.threads.first(where: { $0.threadType?.lowercased() == "assistant" }) else {
+                return nil
+            }
+            threadIDsBySessionKey[sessionKey] = assistant.id
+            threadId = assistant.id
+            log("chat.history 通过线程列表回退解析 operator session=\(sessionKey) thread=\(threadId)")
+        } else {
+            return nil
+        }
+
+        let history = try await fetchThreadHistory(threadId: threadId)
+        let response = ChatHistoryResponse(
+            type: "res",
+            id: UUID().uuidString,
+            ok: true,
+            payload: .init(
+                sessionKey: sessionKey,
+                sessionId: threadId,
+                thinkingLevel: "off",
+                messages: Array(threadHistoryMessages(from: history).suffix(limit))
+            ),
+            result: nil,
+            error: nil
+        )
+        log("读取聊天历史成功 session=\(sessionKey) source=thread_fallback messages=\(response.historyPayload?.messages.count ?? 0)")
+        return response
+    }
+
+    private struct IronClawThreadListResponse: Decodable {
+        let assistantThread: IronClawThreadInfo?
+        let threads: [IronClawThreadInfo]
+        let activeThread: String?
+
+        enum CodingKeys: String, CodingKey {
+            case assistantThread = "assistant_thread"
+            case threads
+            case activeThread = "active_thread"
+        }
     }
 
     private struct IronClawThreadInfo: Decodable {
         let id: String
-    }
+        let state: String?
+        let turnCount: Int?
+        let createdAt: String?
+        let updatedAt: String?
+        let title: String?
+        let threadType: String?
+        let channel: String?
 
-    private struct IronClawThreadHistoryResponse: Decodable {
-        let threadId: String
-        let turns: [IronClawThreadTurn]
-        let hasMore: Bool
-    }
-
-    private struct IronClawThreadTurn: Decodable {
-        let turnNumber: Int?
-        let userInput: String
-        let response: String?
-        let state: String
-        let startedAt: String?
-        let error: String?
-
-        var isTerminal: Bool {
-            let normalized = state.lowercased()
-            return normalized.contains("completed") || normalized.contains("failed") || normalized.contains("accepted")
+        enum CodingKeys: String, CodingKey {
+            case id, state, title, channel
+            case turnCount = "turn_count"
+            case createdAt = "created_at"
+            case updatedAt = "updated_at"
+            case threadType = "thread_type"
         }
     }
 
@@ -728,77 +869,98 @@ class OpenClawClient: ObservableObject {
 
     func fetchChatHistory(sessionKey: String, limit: Int = 200) async throws -> ChatHistoryResponse {
         log("开始读取聊天历史 session=\(sessionKey) limit=\(limit)")
-        if let threadId = threadIDsBySessionKey[sessionKey] ?? (UUID(uuidString: sessionKey) != nil ? sessionKey : nil) {
-            let history = try await fetchThreadHistory(threadId: threadId)
-            let response = ChatHistoryResponse(
-                type: "res",
-                id: UUID().uuidString,
-                ok: true,
-                payload: .init(
-                    sessionKey: sessionKey,
-                    sessionId: threadId,
-                    thinkingLevel: "off",
-                    messages: Array(threadHistoryMessages(from: history).prefix(limit))
-                ),
-                result: nil,
-                error: nil
-            )
-            log("读取聊天历史成功 session=\(sessionKey) source=http messages=\(response.historyPayload?.messages.count ?? 0)")
-            return response
+        do {
+            if let threadId = threadIDsBySessionKey[sessionKey] ?? (UUID(uuidString: sessionKey) != nil ? sessionKey : nil) {
+                let history = try await fetchThreadHistory(threadId: threadId)
+                let response = ChatHistoryResponse(
+                    type: "res",
+                    id: UUID().uuidString,
+                    ok: true,
+                    payload: .init(
+                        sessionKey: sessionKey,
+                        sessionId: threadId,
+                        thinkingLevel: "off",
+                        messages: Array(threadHistoryMessages(from: history).prefix(limit))
+                    ),
+                    result: nil,
+                    error: nil
+                )
+                log("读取聊天历史成功 session=\(sessionKey) source=http messages=\(response.historyPayload?.messages.count ?? 0)")
+                return response
+            }
+        } catch {
+            logFailure("基于线程映射读取聊天历史失败 session=\(sessionKey)", endpoint: "/api/chat/history", error: error)
+            if let fallback = try await fallbackChatHistory(sessionKey: sessionKey, limit: limit) {
+                return fallback
+            }
+            throw error
         }
 
-        let payload = try await invokeTool(name: "sessions_history", arguments: [
-            "session_key": sessionKey,
-            "limit": limit,
-            "include_tools": true,
-        ])
-        let historyJSON: [String: Any] = [
-            "type": "res",
-            "id": UUID().uuidString,
-            "ok": true,
-            "payload": [
-                "sessionKey": sessionKey,
-                "sessionId": sessionKey,
-                "thinkingLevel": "off",
-                "messages": payload["messages"] as? [[String: Any]] ?? [],
-            ],
-        ]
-        let data = try JSONSerialization.data(withJSONObject: historyJSON)
-        let response = try JSONDecoder().decode(ChatHistoryResponse.self, from: data)
-        log("读取聊天历史成功 session=\(sessionKey) source=tool messages=\(response.historyPayload?.messages.count ?? 0)")
-        return response
+        do {
+            let payload = try await invokeTool(name: "sessions_history", arguments: [
+                "session_key": sessionKey,
+                "limit": limit,
+                "include_tools": true,
+            ])
+            let historyJSON: [String: Any] = [
+                "type": "res",
+                "id": UUID().uuidString,
+                "ok": true,
+                "payload": [
+                    "sessionKey": sessionKey,
+                    "sessionId": sessionKey,
+                    "thinkingLevel": "off",
+                    "messages": payload["messages"] as? [[String: Any]] ?? [],
+                ],
+            ]
+            let data = try JSONSerialization.data(withJSONObject: historyJSON)
+            let response = try JSONDecoder().decode(ChatHistoryResponse.self, from: data)
+            log("读取聊天历史成功 session=\(sessionKey) source=tool messages=\(response.historyPayload?.messages.count ?? 0)")
+            return response
+        } catch {
+            logFailure("扩展 sessions_history 不可用 session=\(sessionKey)", endpoint: "/tools/invoke", error: error)
+            if let fallback = try await fallbackChatHistory(sessionKey: sessionKey, limit: limit) {
+                return fallback
+            }
+            throw error
+        }
     }
 
     func fetchSessionsList(limit: Int = 100, activeMinutes: Int = 10080) async throws -> SessionsListResponse {
         log("开始刷新 sessions 列表 limit=\(limit) activeMinutes=\(activeMinutes)")
-        let payload = try await invokeTool(name: "sessions_list", arguments: [
-            "limit": limit,
-            "activeMinutes": activeMinutes,
-            "includeDerivedTitles": true,
-        ])
-        let sessions = (payload["sessions"] as? [[String: Any]] ?? []).map { raw -> [String: Any] in
-            [
-                "key": raw["key"] as? String ?? "unknown",
-                "kind": raw["kind"] as? String,
-                "displayName": raw["derivedTitle"] as? String ?? raw["label"] as? String,
-                "updatedAt": raw["updatedAt"] as? Int ?? 0,
-                "sessionId": raw["id"] as? String ?? raw["key"] as? String ?? UUID().uuidString,
-                "channel": raw["kind"] as? String,
-                "totalTokens": raw["inputTokens"] as? Int ?? 0,
+        do {
+            let payload = try await invokeTool(name: "sessions_list", arguments: [
+                "limit": limit,
+                "activeMinutes": activeMinutes,
+                "includeDerivedTitles": true,
+            ])
+            let sessions = (payload["sessions"] as? [[String: Any]] ?? []).map { raw -> [String: Any] in
+                [
+                    "key": raw["key"] as? String ?? "unknown",
+                    "kind": raw["kind"] as? String,
+                    "displayName": raw["derivedTitle"] as? String ?? raw["label"] as? String,
+                    "updatedAt": raw["updatedAt"] as? Int ?? 0,
+                    "sessionId": raw["id"] as? String ?? raw["key"] as? String ?? UUID().uuidString,
+                    "channel": raw["kind"] as? String,
+                    "totalTokens": raw["inputTokens"] as? Int ?? 0,
+                ]
+            }
+            let responseJSON: [String: Any] = [
+                "type": "res",
+                "ok": true,
+                "id": UUID().uuidString,
+                "payload": [
+                    "sessions": sessions,
+                ],
             ]
+            let data = try JSONSerialization.data(withJSONObject: responseJSON)
+            let response = try JSONDecoder().decode(SessionsListResponse.self, from: data)
+            log("sessions 列表刷新成功 count=\(response.sessions?.count ?? 0)")
+            return response
+        } catch {
+            logFailure("扩展 sessions_list 不可用，准备回退线程列表", endpoint: "/tools/invoke", error: error)
+            return try await threadListPayload(limit: limit, activeMinutes: activeMinutes)
         }
-        let responseJSON: [String: Any] = [
-            "type": "res",
-            "ok": true,
-            "id": UUID().uuidString,
-            "payload": [
-                "sessions": sessions,
-            ],
-        ]
-        let data = try JSONSerialization.data(withJSONObject: responseJSON)
-        let response = try JSONDecoder().decode(SessionsListResponse.self, from: data)
-        log("sessions 列表刷新成功 count=\(response.sessions?.count ?? 0)")
-        return response
     }
 
     func fetchSkillsStatus(agentId: String? = nil) async throws -> [Skill] {
