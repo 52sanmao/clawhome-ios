@@ -222,21 +222,20 @@ struct OpenClawSessionListView: View {
 
             print("[SessionList] 📬 Received \(remoteSessions.count) remote sessions")
 
-            // 只处理 operator 格式的远程会话，并按 sessionKey 去重
-            let operatorSessions = dedupeOperatorSessions(remoteSessions)
-            print("[SessionList] ✅ Filtered+deduped to \(operatorSessions.count) operator sessions")
+            // 兼容 operator key、线程 UUID key，以及本地新建 session 的 session_ 前缀
+            let dedupedSessions = dedupeRemoteSessions(remoteSessions)
+            print("[SessionList] ✅ Filtered+deduped to \(dedupedSessions.count) supported sessions")
 
             let allLocalSessions = try await sessionRepository.getAllSessions(agentId: agent.id)
+            let remoteSessionKeys = Set(dedupedSessions.map { $0.key })
             let openClawLocalSessions = allLocalSessions.filter { session in
-                session.tags.contains("openclaw")
-            }
-            let operatorLocalSessions = openClawLocalSessions.filter { session in
+                guard session.tags.contains("openclaw") else { return false }
                 guard let sessionKey = session.channelMetadataDict?["sessionKey"] as? String else { return false }
-                return sessionKey.hasPrefix("agent:main:operator:")
+                return remoteSessionKeys.contains(sessionKey) || isSupportedOpenClawSessionKey(sessionKey)
             }
 
             var localByKey: [String: ContextGoSession] = [:]
-            for session in operatorLocalSessions {
+            for session in openClawLocalSessions {
                 if let key = session.channelMetadataDict?["sessionKey"] as? String {
                     localByKey[key] = session
                 }
@@ -244,7 +243,7 @@ struct OpenClawSessionListView: View {
 
             var nextLocalSessions: [ContextGoSession] = []
 
-            for remoteSession in operatorSessions {
+            for remoteSession in dedupedSessions {
                 if let existingSession = localByKey[remoteSession.key] {
                     var updatedSession = existingSession
                     if let updatedAt = remoteSession.updatedAt {
@@ -269,8 +268,8 @@ struct OpenClawSessionListView: View {
                 }
             }
 
-            let remoteKeys = Set(operatorSessions.map { $0.key })
-            for localSession in operatorLocalSessions {
+            let remoteKeys = Set(dedupedSessions.map { $0.key })
+            for localSession in openClawLocalSessions {
                 guard let localKey = localSession.channelMetadataDict?["sessionKey"] as? String else { continue }
                 if !remoteKeys.contains(localKey) {
                     var archivedSession = localSession
@@ -336,10 +335,10 @@ struct OpenClawSessionListView: View {
         UserDefaults.standard.set(true, forKey: initialAutoOpenFlagKey)
     }
 
-    private func dedupeOperatorSessions(_ remoteSessions: [SessionsListResponse.RemoteSessionInfo]) -> [SessionsListResponse.RemoteSessionInfo] {
+    private func dedupeRemoteSessions(_ remoteSessions: [SessionsListResponse.RemoteSessionInfo]) -> [SessionsListResponse.RemoteSessionInfo] {
         var byKey: [String: SessionsListResponse.RemoteSessionInfo] = [:]
 
-        for session in remoteSessions where session.key.hasPrefix("agent:main:operator:") {
+        for session in remoteSessions where isSupportedOpenClawSessionKey(session.key) {
             if let existing = byKey[session.key] {
                 let lhs = session.updatedAt ?? 0
                 let rhs = existing.updatedAt ?? 0
@@ -354,16 +353,26 @@ struct OpenClawSessionListView: View {
         return byKey.values.sorted { ($0.updatedAt ?? 0) > ($1.updatedAt ?? 0) }
     }
 
+    private func isSupportedOpenClawSessionKey(_ key: String) -> Bool {
+        if key.hasPrefix("agent:main:operator:") || key.hasPrefix("session_") {
+            return true
+        }
+        return UUID(uuidString: key) != nil
+    }
+
     /// 从远程 session 信息创建本地 ContextGoSession
     private func createSessionFromRemote(_ remote: SessionsListResponse.RemoteSessionInfo) -> ContextGoSession {
-        // 从 sessionKey 提取 suffix 作为唯一标识
-        let suffix = remote.key.replacingOccurrences(of: "agent:main:operator:", with: "")
+        let normalizedSuffix = remote.key
+            .replacingOccurrences(of: "agent:main:operator:", with: "")
+            .replacingOccurrences(of: ":", with: "-")
 
         let sessionId: String
         if let remoteSessionId = remote.sessionId, !remoteSessionId.isEmpty {
             sessionId = remoteSessionId
+        } else if remote.key.hasPrefix("session_") {
+            sessionId = remote.key
         } else {
-            sessionId = "session_\(suffix)"
+            sessionId = "session_\(normalizedSuffix)"
         }
 
         // 生成时间戳（使用 updatedAt 或当前时间）
