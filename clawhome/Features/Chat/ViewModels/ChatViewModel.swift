@@ -185,18 +185,23 @@ class ChatViewModel: ObservableObject {
         self.sessionRepository = sessionRepository ?? LocalSessionRepository.shared
 
         // ✅ Get agent-specific OpenClawClient from ConnectionManager
+        let gatewayURL: String?
+        let gatewayToken: String?
         if let agent = agent {
             // Extract gatewayURL from config
-            let gatewayURL: String?
             if agent.type == "openclaw", let config = try? agent.openClawConfig() {
                 gatewayURL = config.wsURL
+                gatewayToken = config.token
             } else {
                 gatewayURL = nil
+                gatewayToken = nil
             }
 
-            self.clawdBotClient = connectionManager.getClient(for: agent.id, gatewayURL: gatewayURL)
+            self.clawdBotClient = connectionManager.getClient(for: agent.id, gatewayURL: gatewayURL, token: gatewayToken)
             print("[ChatViewModel] 📋 Using dedicated client for agent: \(agent.displayName) at \(gatewayURL ?? "default")")
         } else {
+            gatewayURL = nil
+            gatewayToken = nil
             // Fallback: create a default client if no agent is provided
             let defaultURL = URL(string: CoreConfig.shared.openClawGatewayURL)!
             self.clawdBotClient = OpenClawClient(url: defaultURL)
@@ -218,6 +223,12 @@ class ChatViewModel: ObservableObject {
         self.isConnecting = clawdBotClient.connectionState == .connecting
         self.wasConnected = clawdBotClient.isConnected
         appendConnectionDiagnostic("使用 HTTP IronClaw 客户端：\(self.clawdBotClient.isConnected ? "已连接" : "待连接")")
+        if let gateway = gatewayURL, !gateway.isEmpty {
+            appendConnectionDiagnostic("当前网关地址：\(gateway)")
+        }
+        if let gatewayToken, !gatewayToken.isEmpty {
+            appendConnectionDiagnostic("当前网关 Token 已装载（长度 \(gatewayToken.count)）")
+        }
 
         if agent == nil {
             appendConnectionDiagnostic("当前没有专用 agent 配置，回退到默认 IronClaw 地址：\(CoreConfig.shared.openClawGatewayURL)")

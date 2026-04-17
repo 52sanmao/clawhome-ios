@@ -31,16 +31,17 @@ final class LocalOpenClawGatewayStore: ObservableObject {
         }
     }
 
-    func add(name: String, wsURL: String) {
-        let gateway = LocalOpenClawGateway(name: name, wsURL: wsURL)
+    func add(name: String, wsURL: String, token: String) {
+        let gateway = LocalOpenClawGateway(name: name, wsURL: wsURL, token: token)
         gateways.insert(gateway, at: 0)
         persist()
     }
 
-    func update(id: String, name: String, wsURL: String) {
+    func update(id: String, name: String, wsURL: String, token: String) {
         guard let index = gateways.firstIndex(where: { $0.id == id }) else { return }
         gateways[index].name = name
         gateways[index].wsURL = wsURL
+        gateways[index].token = token
         gateways[index].updatedAt = Date()
         gateways.sort(by: { $0.updatedAt > $1.updatedAt })
         persist()

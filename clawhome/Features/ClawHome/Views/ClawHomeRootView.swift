@@ -52,14 +52,14 @@ struct ClawHomeRootView: View {
             Task { await loadRecentSessions() }
         }
         .sheet(isPresented: $showingAddGateway) {
-            GatewayFormView(mode: .create) { name, wsURL in
-                store.add(name: name, wsURL: wsURL)
+            GatewayFormView(mode: .create) { name, wsURL, token in
+                store.add(name: name, wsURL: wsURL, token: token)
                 showingAddGateway = false
             }
         }
         .sheet(item: $editingGateway) { gateway in
-            GatewayFormView(mode: .edit(gateway)) { name, wsURL in
-                store.update(id: gateway.id, name: name, wsURL: wsURL)
+            GatewayFormView(mode: .edit(gateway)) { name, wsURL, token in
+                store.update(id: gateway.id, name: name, wsURL: wsURL, token: token)
                 editingGateway = nil
             }
         }
@@ -405,12 +405,13 @@ private enum GatewayFormMode {
 
 private struct GatewayFormView: View {
     let mode: GatewayFormMode
-    let onSave: (String, String) -> Void
+    let onSave: (String, String, String) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
     @State private var name: String = ""
-    @State private var rawURL: String = ""
+    @State private var rawURL: String = "https://rare-lark.agent4.near.ai/"
+    @State private var token: String = "b5af51dc17344eab80981e47f5ab5784a0f1df4846e7229fba421ae97021aa1e"
     @State private var showingScanner = false
     @State private var scannedPayload: String?
 
@@ -425,6 +426,9 @@ private struct GatewayFormView: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .keyboardType(.URL)
+                    SecureField("Bearer Token", text: $token)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
 
                 Section {
@@ -459,6 +463,7 @@ private struct GatewayFormView: View {
             if case .edit(let gateway) = mode {
                 name = gateway.name
                 rawURL = gateway.wsURL
+                token = gateway.token
             }
         }
         .sheet(isPresented: $showingScanner) {
@@ -501,8 +506,14 @@ private struct GatewayFormView: View {
             return
         }
 
+        let trimmedToken = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedToken.isEmpty else {
+            validationMessage = "请提供 Bearer Token。"
+            return
+        }
+
         validationMessage = nil
-        onSave(finalName, parsedURL)
+        onSave(finalName, parsedURL, trimmedToken)
     }
 }
 

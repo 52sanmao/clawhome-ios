@@ -28,12 +28,18 @@ class ConnectionManager: ObservableObject {
     // MARK: - Public API
 
     /// Get or create OpenClawClient for a specific agent.
-    func getClient(for agentId: String, gatewayURL: String? = nil) -> OpenClawClient {
+    func getClient(for agentId: String, gatewayURL: String? = nil, token: String? = nil) -> OpenClawClient {
         if let existingClient = clients[agentId] {
+            if let token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                CoreConfig.shared.saveJWT(token)
+            }
             return existingClient
         }
 
         let gatewayURLString = gatewayURL ?? CoreConfig.shared.openClawGatewayURL
+        if let token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            CoreConfig.shared.saveJWT(token)
+        }
         guard let url = URL(string: gatewayURLString) else {
             let defaultURL = URL(string: CoreConfig.shared.openClawGatewayURL)!
             let client = OpenClawClient(url: defaultURL)
@@ -48,8 +54,8 @@ class ConnectionManager: ObservableObject {
         return client
     }
 
-    func connect(agentId: String, gatewayURL: String? = nil) {
-        let client = getClient(for: agentId, gatewayURL: gatewayURL)
+    func connect(agentId: String, gatewayURL: String? = nil, token: String? = nil) {
+        let client = getClient(for: agentId, gatewayURL: gatewayURL, token: token)
         client.connect()
     }
 

@@ -30,6 +30,7 @@ class OpenClawClient: ObservableObject {
     private let baseURL: URL
     private let session = URLSession(configuration: .default)
     private let coreConfig = CoreConfig.shared
+    private let diagnostics = ClawHomeLogStore.shared
 
     private var runQueue: [String] = []
     private var bufferedMessages: [String: BufferedMessage] = [:]
@@ -90,6 +91,10 @@ class OpenClawClient: ObservableObject {
         }
     }
 
+    private func log(_ message: String) {
+        diagnostics.append(message)
+    }
+
     nonisolated private static func normalizedHTTPURL(from url: URL) -> URL? {
         guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
             return nil
@@ -136,50 +141,144 @@ class OpenClawClient: ObservableObject {
         for (key, value) in extraHeaders {
             request.setValue(value, forHTTPHeaderField: key)
         }
+
+        let tokenState = token.isEmpty ? "未携带 Token" : "已携带 Token(length=\(token.count))"
+        log("准备请求 \(method) \(path) host=\(url.host ?? "unknown") \(tokenState)")
         return request
+    }
+
+    private func describeHTTPError(data: Data?, statusCode: Int) -> String {
+        if let data,
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let error = json["error"] as? [String: Any],
+           let message = error["message"] as? String,
+           !message.isEmpty {
+            return message
+        }
+        if let data,
+           let text = String(data: data, encoding: .utf8),
+           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+        if statusCode == 401 {
+            return "鉴权失败，请检查 Bearer Token 是否有效"
+        }
+        return "IronClaw request failed (HTTP \(statusCode))"
+    }
+
+    private func logFailure(_ message: String, endpoint: String, error: Error) {
+        log("\(message) endpoint=\(endpoint) error=\(error.localizedDescription)")
+    }
+
+    private func logChatState(runId: String, sessionKey: String, state: String, detail: String) {
+        log("聊天状态 run=\(runId) session=\(sessionKey) state=\(state) \(detail)")
+    }
+
+    private func extractThreadTerminalError(from turn: IronClawThreadTurn) -> String? {
+        if let error = turn.error?.trimmingCharacters(in: .whitespacesAndNewlines), !error.isEmpty {
+            return error
+        }
+        if let response = turn.response?.trimmingCharacters(in: .whitespacesAndNewlines), !response.isEmpty,
+           turn.state.lowercased().contains("fail") {
+            return response
+        }
+        return nil
+    }
+
+    private func removeRun(_ runId: String, reason: String? = nil) {
+        runQueue.removeAll { $0 == runId }
+        if let reason, !reason.isEmpty {
+            log("结束运行 run=\(runId) reason=\(reason) 剩余活动运行数=\(runQueue.count)")
+        } else {
+            log("结束运行 run=\(runId) 剩余活动运行数=\(runQueue.count)")
+        }
+        notifyRunQueueChanged()
+    }
+
+    private func notifyRunQueueChanged() {
+        log("活动运行队列变更 count=\(runQueue.count)")
+        onRunQueueChanged?(!runQueue.isEmpty)
     }
 
     private func validate(_ response: URLResponse, data: Data? = nil, endpoint: String? = nil) throws {
         guard let http = response as? HTTPURLResponse else {
+            log("请求失败：无效响应对象 endpoint=\(endpoint ?? "unknown")")
             throw OpenClawError.requestFailed("Invalid IronClaw response")
         }
+        log("收到 HTTP \(http.statusCode) endpoint=\(endpoint ?? "unknown")")
         guard (200 ..< 300).contains(http.statusCode) else {
             if http.statusCode == 404, endpoint == "/tools/invoke" {
+                log("扩展接口未启用 endpoint=/tools/invoke status=404")
                 throw OpenClawError.requestFailed("当前 IronClaw 部署未启用工具接口（/tools/invoke），该功能不可用")
             }
-            if let data,
-               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let error = json["error"] as? [String: Any],
-               let message = error["message"] as? String {
-                throw OpenClawError.requestFailed(message)
-            }
-            throw OpenClawError.requestFailed("IronClaw request failed (HTTP \(http.statusCode))")
+            let message = describeHTTPError(data: data, statusCode: http.statusCode)
+            log("HTTP 请求失败 endpoint=\(endpoint ?? "unknown") status=\(http.statusCode) message=\(message)")
+            throw OpenClawError.requestFailed(message)
+        }
+    }
+
+    private func describeConnectionState(_ state: ConnectionState) -> String {
+        switch state {
+        case .connected:
+            return "connected"
+        case .connecting:
+            return "connecting"
+        case .disconnected:
+            return "disconnected"
+        case .error(let message):
+            return "error(\(message))"
+        }
+    }
+
+    private func updateConnectionState(_ state: ConnectionState) {
+        connectionState = state
+        log("HTTP 主链路状态=\(describeConnectionState(state))")
+    }
+
+    private func updateConnected(_ connected: Bool) {
+        isConnected = connected
+        log("HTTP 主链路连接标记=\(connected ? "true" : "false")")
+    }
+
+    private func updatePresenceInfo(_ info: ConnectResponse.HelloPayload.PresenceInfo?) {
+        presenceInfo = info
+        if let info {
+            log("Presence 已更新 online=\(info.online) model=\(info.model)")
+        } else {
+            log("Presence 已清空")
         }
     }
 
     func connect() {
-        guard connectionState != .connecting else { return }
-        connectionState = .connecting
+        guard connectionState != .connecting else {
+            log("忽略重复 connect()：当前已在连接中")
+            return
+        }
+        log("开始验证 HTTP 聊天主链路 baseURL=\(baseURL.absoluteString)")
+        updateConnectionState(.connecting)
 
         Task {
             do {
                 _ = try await fetchModels()
-                isConnected = true
-                connectionState = .connected
-                presenceInfo = ConnectResponse.HelloPayload.PresenceInfo(online: true, model: "IronClaw")
+                updateConnected(true)
+                updateConnectionState(.connected)
+                updatePresenceInfo(ConnectResponse.HelloPayload.PresenceInfo(online: true, model: "IronClaw"))
+                log("HTTP 聊天主链路验证成功")
             } catch {
-                isConnected = false
-                connectionState = .error(error.localizedDescription)
+                updateConnected(false)
+                updateConnectionState(.error(error.localizedDescription))
+                logFailure("HTTP 聊天主链路验证失败", endpoint: "/v1/models", error: error)
             }
         }
     }
 
     func disconnect() {
+        log("断开 HTTP 聊天主链路")
         currentResponseTask?.cancel()
         currentResponseTask = nil
-        isConnected = false
-        presenceInfo = nil
-        connectionState = .disconnected
+        updateConnected(false)
+        updatePresenceInfo(nil)
+        updateConnectionState(.disconnected)
         runQueue.removeAll()
         notifyRunQueueChanged()
     }
@@ -197,15 +296,20 @@ class OpenClawClient: ObservableObject {
         sessionKey: String? = nil,
         attachments: [OpenClawAttachment] = []
     ) async throws -> String {
-        guard isConnected else { throw OpenClawError.notConnected }
+        guard isConnected else {
+            log("拒绝发送消息：HTTP 主链路当前未连接")
+            throw OpenClawError.notConnected
+        }
 
         let resolvedSessionKey = sessionKey ?? "agent:main:operator:default"
         let runId = "hermes-run-\(UUID().uuidString)"
+        log("开始发送聊天消息 run=\(runId) session=\(resolvedSessionKey) 文本长度=\(message.count) 附件数=\(attachments.count)")
         runQueue.append(runId)
         notifyRunQueueChanged()
         onRunAccepted?(runId)
         onLifecycleStart?(runId)
         if let thinking, !thinking.isEmpty {
+            log("发送前携带 thinking 提示 run=\(runId) length=\(thinking.count)")
             onAgentThinkingDelta?(thinking)
         }
 
@@ -220,38 +324,48 @@ class OpenClawClient: ObservableObject {
 
     private func sendThreadMessage(runId: String, sessionKey: String, message: String, attachments: [OpenClawAttachment]) async {
         do {
+            logChatState(runId: runId, sessionKey: sessionKey, state: "resolving_thread", detail: "开始解析或创建线程")
             let threadId = try await resolveThreadID(for: sessionKey)
+            logChatState(runId: runId, sessionKey: sessionKey, state: "accepted", detail: "thread=\(threadId)")
             onChatStateEvent?(ChatStateEvent(runId: runId, sessionKey: sessionKey, state: "accepted", text: nil, thinking: nil, stopReason: nil, errorMessage: nil))
 
             let baselineHistory = try await fetchThreadHistory(threadId: threadId)
             let baselineTurnCount = baselineHistory.turns.count
+            logChatState(runId: runId, sessionKey: sessionKey, state: "history_baseline", detail: "thread=\(threadId) turns=\(baselineTurnCount)")
             let content = composeThreadMessageContent(message: message, attachments: attachments)
 
             try await postThreadMessage(content: content, threadId: threadId)
+            logChatState(runId: runId, sessionKey: sessionKey, state: "message_sent", detail: "thread=\(threadId) payloadLength=\(content.count)")
             let poll = try await waitForThreadTurn(threadId: threadId, afterTurnCount: baselineTurnCount)
             let responseText = (poll.latestTurn.response ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
 
             if !responseText.isEmpty {
                 bufferReplacement(text: responseText, sessionKey: sessionKey, runId: runId)
                 onAgentStreamDelta?(responseText)
+                logChatState(runId: runId, sessionKey: sessionKey, state: "response_ready", detail: "thread=\(threadId) 响应长度=\(responseText.count)")
+            } else {
+                logChatState(runId: runId, sessionKey: sessionKey, state: "response_empty", detail: "thread=\(threadId) 已到终态但响应为空")
             }
 
             markBufferedComplete(sessionKey: sessionKey)
             onChatStateEvent?(ChatStateEvent(runId: runId, sessionKey: sessionKey, state: "final", text: responseText, thinking: nil, stopReason: nil, errorMessage: nil))
             onLifecycleEnd?(runId)
             onAgentComplete?()
-            removeRun(runId)
+            removeRun(runId, reason: "completed")
         } catch is CancellationError {
-            removeRun(runId)
+            logChatState(runId: runId, sessionKey: sessionKey, state: "cancelled", detail: "聊天任务被取消")
+            removeRun(runId, reason: "cancelled")
         } catch {
             let message = error.localizedDescription
             markBufferedError(sessionKey: sessionKey, message: message)
+            logChatState(runId: runId, sessionKey: sessionKey, state: "error", detail: message)
             onChatStateEvent?(ChatStateEvent(runId: runId, sessionKey: sessionKey, state: "error", text: nil, thinking: nil, stopReason: nil, errorMessage: message))
             onLifecycleError?(runId, message)
             onAgentError?(message)
-            removeRun(runId)
+            removeRun(runId, reason: "error")
         }
     }
+
 
     private func composeThreadMessageContent(message: String, attachments: [OpenClawAttachment]) -> String {
         guard !attachments.isEmpty else { return message }
@@ -264,14 +378,18 @@ class OpenClawClient: ObservableObject {
 
     private func resolveThreadID(for sessionKey: String) async throws -> String {
         if let existing = threadIDsBySessionKey[sessionKey], !existing.isEmpty {
+            log("复用已有线程 session=\(sessionKey) thread=\(existing)")
             return existing
         }
         if UUID(uuidString: sessionKey) != nil {
             threadIDsBySessionKey[sessionKey] = sessionKey
+            log("sessionKey 本身就是线程 ID session=\(sessionKey)")
             return sessionKey
         }
+        log("未找到现有线程，准备新建线程 session=\(sessionKey)")
         let created = try await createThread()
         threadIDsBySessionKey[sessionKey] = created.id
+        log("线程创建完成 session=\(sessionKey) thread=\(created.id)")
         return created.id
     }
 
@@ -285,37 +403,67 @@ class OpenClawClient: ObservableObject {
                 "timezone": TimeZone.current.identifier,
             ]
         )
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/chat/send")
+            log("聊天发送成功 thread=\(threadId)")
+        } catch {
+            logFailure("聊天发送失败 thread=\(threadId)", endpoint: "/api/chat/send", error: error)
+            throw error
+        }
     }
 
     private func waitForThreadTurn(threadId: String, afterTurnCount: Int, timeout: TimeInterval = 45) async throws -> ThreadPollResult {
         let deadline = Date().addingTimeInterval(timeout)
+        var attempt = 0
         while Date() < deadline {
+            attempt += 1
             let history = try await fetchThreadHistory(threadId: threadId)
+            let latestState = history.turns.last?.state ?? "none"
+            log("轮询聊天历史 thread=\(threadId) attempt=\(attempt) turns=\(history.turns.count) latestState=\(latestState)")
             if let latest = history.turns.last,
                history.turns.count > afterTurnCount,
                latest.isTerminal {
+                if latest.state.lowercased().contains("fail") {
+                    let message = extractThreadTerminalError(from: latest) ?? "聊天线程失败，但服务端未返回详细错误"
+                    log("聊天线程终态失败 thread=\(threadId) state=\(latest.state) message=\(message)")
+                    throw OpenClawError.requestFailed(message)
+                }
+                log("聊天线程达到终态 thread=\(threadId) state=\(latest.state)")
                 return ThreadPollResult(history: history, latestTurn: latest)
             }
             try await Task.sleep(nanoseconds: 300_000_000)
         }
+        log("聊天历史轮询超时 thread=\(threadId) timeout=\(timeout)")
         throw OpenClawError.timeout
     }
 
     private func fetchThreadHistory(threadId: String) async throws -> IronClawThreadHistoryResponse {
         let encoded = threadId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? threadId
         let request = try makeRequest(path: "/api/chat/history?thread_id=\(encoded)", method: "GET")
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
-        return try JSONDecoder.snakeCase.decode(IronClawThreadHistoryResponse.self, from: data)
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/chat/history")
+            let decoded = try JSONDecoder.snakeCase.decode(IronClawThreadHistoryResponse.self, from: data)
+            return decoded
+        } catch {
+            logFailure("拉取聊天历史失败 thread=\(threadId)", endpoint: "/api/chat/history", error: error)
+            throw error
+        }
     }
 
     private func createThread() async throws -> IronClawThreadInfo {
         let request = try makeRequest(path: "/api/chat/thread/new", method: "POST")
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
-        return try JSONDecoder.snakeCase.decode(IronClawThreadInfo.self, from: data)
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/chat/thread/new")
+            let decoded = try JSONDecoder.snakeCase.decode(IronClawThreadInfo.self, from: data)
+            log("创建聊天线程成功 thread=\(decoded.id)")
+            return decoded
+        } catch {
+            logFailure("创建聊天线程失败", endpoint: "/api/chat/thread/new", error: error)
+            throw error
+        }
     }
 
     private func threadHistoryMessages(from history: IronClawThreadHistoryResponse) -> [ChatHistoryResponse.HistoryMessage] {
@@ -381,6 +529,7 @@ class OpenClawClient: ObservableObject {
         let response: String?
         let state: String
         let startedAt: String?
+        let error: String?
 
         var isTerminal: Bool {
             let normalized = state.lowercased()
@@ -389,16 +538,18 @@ class OpenClawClient: ObservableObject {
     }
 
     func abortChat(sessionKey: String? = nil, runId: String? = nil) async throws -> Int {
+        log("请求停止聊天 run=\(runId ?? "unknown") session=\(sessionKey ?? "unknown")")
         currentResponseTask?.cancel()
         currentResponseTask = nil
         let resolvedRunId = runId ?? runQueue.first
         if let resolvedRunId {
-            removeRun(resolvedRunId)
+            removeRun(resolvedRunId, reason: "stopped")
             onChatStateEvent?(ChatStateEvent(runId: resolvedRunId, sessionKey: sessionKey ?? "", state: "aborted", text: nil, thinking: nil, stopReason: "stopped", errorMessage: nil))
             onLifecycleError?(resolvedRunId, "stopped")
             onAgentComplete?()
             return 1
         }
+        log("停止聊天时没有活动 run")
         return 0
     }
 
@@ -412,19 +563,72 @@ class OpenClawClient: ObservableObject {
 
         for path in candidatePaths {
             do {
+                log("开始探测健康状态 endpoint=\(path)")
                 let request = try makeRequest(path: path, method: "GET")
                 let (data, response) = try await session.data(for: request)
-                try validate(response, data: data)
+                try validate(response, data: data, endpoint: path)
                 if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    return json["status"] as? String ?? "ok"
+                    let status = json["status"] as? String ?? "ok"
+                    log("健康状态探测成功 endpoint=\(path) status=\(status)")
+                    return status
                 }
+                log("健康状态探测成功 endpoint=\(path) status=ok")
                 return "ok"
             } catch {
+                logFailure("健康状态探测失败", endpoint: path, error: error)
                 lastError = error
             }
         }
 
         throw lastError ?? OpenClawError.requestFailed("无法获取 IronClaw 状态")
+    }
+
+    func fetchCronJobs(includeDisabled: Bool = false) async throws -> [CronJob] {
+        log("开始刷新 routines 列表 includeDisabled=\(includeDisabled)")
+        let request = try makeRequest(path: "/api/routines", method: "GET")
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/routines")
+            let decoded = try JSONDecoder.snakeCase.decode(RoutineListResponseDTO.self, from: data)
+            let jobs = decoded.routines.compactMap { routine in
+                if !includeDisabled, routine.enabled == false {
+                    return nil
+                }
+                return CronJob(dto: routine)
+            }
+            log("routines 列表刷新成功 count=\(jobs.count)")
+            return jobs
+        } catch {
+            logFailure("刷新 routines 列表失败", endpoint: "/api/routines", error: error)
+            throw error
+        }
+    }
+
+    func fetchCronStatus() async throws -> CronStatus {
+        let jobs = try await fetchCronJobs(includeDisabled: true)
+        let nextWake = jobs.compactMap { $0.state.nextWakeAtMs }.min()
+        let enabledJobs = jobs.filter { $0.state.lastRunStatus != "disabled" }
+        let status = CronStatus(enabled: !enabledJobs.isEmpty, storePath: nil, jobs: jobs.count, nextWakeAtMs: nextWake)
+        log("routines 状态汇总 enabled=\(status.enabled) jobs=\(status.jobs)")
+        return status
+    }
+
+    func fetchCronRuns(jobId: String, limit: Int? = nil) async throws -> [CronRunEntry] {
+        let escapedJobId = jobId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? jobId
+        log("开始刷新 routine runs job=\(jobId) limit=\(limit.map(String.init) ?? "nil")")
+        let request = try makeRequest(path: "/api/routines/\(escapedJobId)/runs", method: "GET")
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/routines/{id}/runs")
+            let decoded = try JSONDecoder.snakeCase.decode(RoutineRunsResponseDTO.self, from: data)
+            let runs = decoded.runs.map { CronRunEntry(dto: $0, fallbackJobId: jobId) }
+            let limitedRuns = limit.map { Array(runs.prefix($0)) } ?? runs
+            log("routine runs 刷新成功 job=\(jobId) count=\(limitedRuns.count)")
+            return limitedRuns
+        } catch {
+            logFailure("刷新 routine runs 失败 job=\(jobId)", endpoint: "/api/routines/{id}/runs", error: error)
+            throw error
+        }
     }
 
     func fetchUsageCost() async throws -> UsageCostPayload {
@@ -460,38 +664,6 @@ class OpenClawClient: ObservableObject {
         return UsageCostPayload(updatedAt: Int64(Date().timeIntervalSince1970 * 1000), days: 0, daily: [], totals: totals)
     }
 
-    func fetchCronJobs(includeDisabled: Bool = false) async throws -> [CronJob] {
-        let request = try makeRequest(path: "/api/routines", method: "GET")
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
-        let decoded = try JSONDecoder.snakeCase.decode(RoutineListResponseDTO.self, from: data)
-        return decoded.routines.compactMap { routine in
-            if !includeDisabled, routine.enabled == false {
-                return nil
-            }
-            return CronJob(dto: routine)
-        }
-    }
-
-    func fetchCronStatus() async throws -> CronStatus {
-        let jobs = try await fetchCronJobs(includeDisabled: true)
-        let nextWake = jobs.compactMap { $0.state.nextWakeAtMs }.min()
-        let enabledJobs = jobs.filter { $0.state.lastRunStatus != "disabled" }
-        return CronStatus(enabled: !enabledJobs.isEmpty, storePath: nil, jobs: jobs.count, nextWakeAtMs: nextWake)
-    }
-
-    func fetchCronRuns(jobId: String, limit: Int? = nil) async throws -> [CronRunEntry] {
-        let escapedJobId = jobId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? jobId
-        let request = try makeRequest(path: "/api/routines/\(escapedJobId)/runs", method: "GET")
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
-        let decoded = try JSONDecoder.snakeCase.decode(RoutineRunsResponseDTO.self, from: data)
-        let runs = decoded.runs.map { CronRunEntry(dto: $0, fallbackJobId: jobId) }
-        if let limit {
-            return Array(runs.prefix(limit))
-        }
-        return runs
-    }
 
     func addCronJob(id: String, schedule: String, action: CronAction, enabled: Bool = true) async throws {
         throw OpenClawError.requestFailed("IronClaw 当前未提供创建 cron 任务接口")
@@ -502,13 +674,20 @@ class OpenClawClient: ObservableObject {
             throw OpenClawError.requestFailed("IronClaw 当前仅支持启用或停用现有任务")
         }
         let escapedJobId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        log("开始切换 routine 开关 job=\(id) enabled=\(enabled)")
         let request = try makeRequest(
             path: "/api/routines/\(escapedJobId)/toggle",
             method: "POST",
             jsonBody: ["enabled": enabled]
         )
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/routines/{id}/toggle")
+            log("切换 routine 开关成功 job=\(id) enabled=\(enabled)")
+        } catch {
+            logFailure("切换 routine 开关失败 job=\(id)", endpoint: "/api/routines/{id}/toggle", error: error)
+            throw error
+        }
     }
 
     func removeCronJob(id: String) async throws {
@@ -517,41 +696,41 @@ class OpenClawClient: ObservableObject {
 
     func runCronJob(id: String, mode: String = "force") async throws {
         let escapedJobId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        log("开始触发 routine job=\(id) mode=\(mode)")
         let request = try makeRequest(
             path: "/api/routines/\(escapedJobId)/trigger",
             method: "POST",
             jsonBody: ["mode": mode]
         )
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
-        let event = CronEvent(
-            type: "event",
-            event: "cron",
-            payload: .init(
-                jobId: id,
-                action: "finished",
-                runAtMs: Int64(Date().timeIntervalSince1970 * 1000),
-                status: "ok",
-                summary: nil,
-                durationMs: nil
-            ),
-            seq: nil
-        )
-        onCronEvent?(event)
-    }
-
-    func fetchSkillsStatus(agentId: String? = nil) async throws -> [Skill] {
-        throw OpenClawError.requestFailed("IronClaw 当前未提供技能状态接口")
-    }
-
-    func updateSkill(skillKey: String, enabled: Bool? = nil, apiKey: String? = nil, env: [String: String]? = nil) async throws -> SkillUpdateResponse.Payload {
-        throw OpenClawError.requestFailed("IronClaw 当前未提供技能更新接口")
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/api/routines/{id}/trigger")
+            let event = CronEvent(
+                type: "event",
+                event: "cron",
+                payload: .init(
+                    jobId: id,
+                    action: "finished",
+                    runAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+                    status: "ok",
+                    summary: nil,
+                    durationMs: nil
+                ),
+                seq: nil
+            )
+            log("触发 routine 成功 job=\(id)")
+            onCronEvent?(event)
+        } catch {
+            logFailure("触发 routine 失败 job=\(id)", endpoint: "/api/routines/{id}/trigger", error: error)
+            throw error
+        }
     }
 
     func fetchChatHistory(sessionKey: String, limit: Int = 200) async throws -> ChatHistoryResponse {
+        log("开始读取聊天历史 session=\(sessionKey) limit=\(limit)")
         if let threadId = threadIDsBySessionKey[sessionKey] ?? (UUID(uuidString: sessionKey) != nil ? sessionKey : nil) {
             let history = try await fetchThreadHistory(threadId: threadId)
-            return ChatHistoryResponse(
+            let response = ChatHistoryResponse(
                 type: "res",
                 id: UUID().uuidString,
                 ok: true,
@@ -564,6 +743,8 @@ class OpenClawClient: ObservableObject {
                 result: nil,
                 error: nil
             )
+            log("读取聊天历史成功 session=\(sessionKey) source=http messages=\(response.historyPayload?.messages.count ?? 0)")
+            return response
         }
 
         let payload = try await invokeTool(name: "sessions_history", arguments: [
@@ -583,10 +764,13 @@ class OpenClawClient: ObservableObject {
             ],
         ]
         let data = try JSONSerialization.data(withJSONObject: historyJSON)
-        return try JSONDecoder().decode(ChatHistoryResponse.self, from: data)
+        let response = try JSONDecoder().decode(ChatHistoryResponse.self, from: data)
+        log("读取聊天历史成功 session=\(sessionKey) source=tool messages=\(response.historyPayload?.messages.count ?? 0)")
+        return response
     }
 
     func fetchSessionsList(limit: Int = 100, activeMinutes: Int = 10080) async throws -> SessionsListResponse {
+        log("开始刷新 sessions 列表 limit=\(limit) activeMinutes=\(activeMinutes)")
         let payload = try await invokeTool(name: "sessions_list", arguments: [
             "limit": limit,
             "activeMinutes": activeMinutes,
@@ -612,8 +796,19 @@ class OpenClawClient: ObservableObject {
             ],
         ]
         let data = try JSONSerialization.data(withJSONObject: responseJSON)
-        return try JSONDecoder().decode(SessionsListResponse.self, from: data)
+        let response = try JSONDecoder().decode(SessionsListResponse.self, from: data)
+        log("sessions 列表刷新成功 count=\(response.sessions?.count ?? 0)")
+        return response
     }
+
+    func fetchSkillsStatus(agentId: String? = nil) async throws -> [Skill] {
+        throw OpenClawError.requestFailed("IronClaw 当前未提供技能状态接口")
+    }
+
+    func updateSkill(skillKey: String, enabled: Bool? = nil, apiKey: String? = nil, env: [String: String]? = nil) async throws -> SkillUpdateResponse.Payload {
+        throw OpenClawError.requestFailed("IronClaw 当前未提供技能更新接口")
+    }
+
 
     @discardableResult
     func patchThinkingLevel(sessionKey: String, thinkingLevel: String) async throws -> SessionsPatchResponse {
@@ -710,23 +905,24 @@ class OpenClawClient: ObservableObject {
         }
     }
 
-    private func removeRun(_ runId: String) {
-        runQueue.removeAll { $0 == runId }
-        notifyRunQueueChanged()
-    }
-
-    private func notifyRunQueueChanged() {
-        onRunQueueChanged?(!runQueue.isEmpty)
-    }
 
     private func fetchModels() async throws -> [IronClawModel] {
+        log("开始探测模型列表 /v1/models")
         let request = try makeRequest(path: "/v1/models", method: "GET")
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data)
-        return try JSONDecoder().decode(IronClawModelsResponse.self, from: data).data
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/v1/models")
+            let models = try JSONDecoder().decode(IronClawModelsResponse.self, from: data).data
+            log("模型列表探测成功 count=\(models.count)")
+            return models
+        } catch {
+            logFailure("模型列表探测失败", endpoint: "/v1/models", error: error)
+            throw error
+        }
     }
 
     private func invokeTool(name: String, arguments: [String: Any]) async throws -> [String: Any] {
+        log("开始调用扩展工具 tool=\(name)")
         let request = try makeRequest(
             path: "/tools/invoke",
             method: "POST",
@@ -735,23 +931,33 @@ class OpenClawClient: ObservableObject {
                 "args": arguments,
             ]
         )
-        let (data, response) = try await session.data(for: request)
-        try validate(response, data: data, endpoint: "/tools/invoke")
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw OpenClawError.decodingFailed
+        do {
+            let (data, response) = try await session.data(for: request)
+            try validate(response, data: data, endpoint: "/tools/invoke")
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                log("扩展工具返回无法解析 JSON tool=\(name)")
+                throw OpenClawError.decodingFailed
+            }
+            if let ok = json["ok"] as? Bool, !ok {
+                let error = json["error"] as? [String: Any]
+                let message = error?["message"] as? String ?? "IronClaw tool invoke failed"
+                log("扩展工具调用失败 tool=\(name) message=\(message)")
+                throw OpenClawError.requestFailed(message)
+            }
+            if let result = json["result"] as? [String: Any],
+               let content = result["content"] as? [[String: Any]],
+               let text = content.first?["text"] as? String,
+               let nestedData = text.data(using: .utf8),
+               let nestedJSON = try JSONSerialization.jsonObject(with: nestedData) as? [String: Any] {
+                log("扩展工具调用成功 tool=\(name) source=result.content")
+                return nestedJSON
+            }
+            log("扩展工具调用成功 tool=\(name) source=payload")
+            return json["payload"] as? [String: Any] ?? json
+        } catch {
+            logFailure("扩展工具调用异常 tool=\(name)", endpoint: "/tools/invoke", error: error)
+            throw error
         }
-        if let ok = json["ok"] as? Bool, !ok {
-            let error = json["error"] as? [String: Any]
-            throw OpenClawError.requestFailed(error?["message"] as? String ?? "IronClaw tool invoke failed")
-        }
-        if let result = json["result"] as? [String: Any],
-           let content = result["content"] as? [[String: Any]],
-           let text = content.first?["text"] as? String,
-           let nestedData = text.data(using: .utf8),
-           let nestedJSON = try JSONSerialization.jsonObject(with: nestedData) as? [String: Any] {
-            return nestedJSON
-        }
-        return json["payload"] as? [String: Any] ?? json
     }
 }
 

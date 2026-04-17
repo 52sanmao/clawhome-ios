@@ -144,12 +144,14 @@ struct CloudAgent: Codable, Identifiable {
 /// OpenClaw Agent 配置
 struct OpenClawConfig: Codable {
     var wsURL: String
+    var token: String?
     var agentId: String?  // Optional - can be derived from CloudAgent.id if not provided
     var sessionKey: String?
 
     enum CodingKeys: String, CodingKey {
         case wsURL
         case gatewayURL  // Alias for wsURL (backend compatibility)
+        case token
         case agentId
         case sessionKey
     }
@@ -172,6 +174,7 @@ struct OpenClawConfig: Codable {
             )
         }
 
+        self.token = try? container.decode(String.self, forKey: .token)
         self.agentId = try? container.decode(String.self, forKey: .agentId)
         self.sessionKey = try? container.decode(String.self, forKey: .sessionKey)
     }
@@ -179,6 +182,7 @@ struct OpenClawConfig: Codable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(wsURL, forKey: .wsURL)
+        try container.encodeIfPresent(token, forKey: .token)
         try container.encodeIfPresent(agentId, forKey: .agentId)
         try container.encodeIfPresent(sessionKey, forKey: .sessionKey)
     }
