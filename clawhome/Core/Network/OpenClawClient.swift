@@ -85,11 +85,11 @@ class OpenClawClient: ObservableObject {
         var fullText: String { deltas.joined() }
     }
 
-    nonisolated convenience init(url: URL) {
+    convenience init(url: URL) {
         self.init(url: url, tokenProvider: { CoreConfig.shared.jwtToken }, tokenLabel: "CoreConfig.shared.jwtToken")
     }
 
-    nonisolated init(url: URL, tokenProvider: @escaping () -> String, tokenLabel: String) {
+    init(url: URL, tokenProvider: @escaping () -> String, tokenLabel: String) {
         if let normalized = Self.normalizedHTTPURL(from: url) {
             self.baseURL = normalized
         } else {
