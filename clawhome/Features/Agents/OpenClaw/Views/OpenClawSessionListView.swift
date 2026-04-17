@@ -182,10 +182,13 @@ struct OpenClawSessionListView: View {
         defer { isLoading = false }
 
         // Step 1: 连接 IronClaw（如果未连接）
-        let gatewayURL: String? = (try? agent.openClawConfig())?.wsURL
+        let gatewayConfig = try? agent.openClawConfig()
+        let gatewayURL: String? = gatewayConfig?.wsURL
+        let gatewayToken: String? = gatewayConfig?.token
         let client = connectionManager.getClient(
             for: agent.id,
-            gatewayURL: gatewayURL
+            gatewayURL: gatewayURL,
+            token: gatewayToken
         )
 
         // 等待连接（最多 5 秒）
@@ -201,8 +204,9 @@ struct OpenClawSessionListView: View {
         }
 
         guard client.isConnected else {
+            ClawHomeLogStore.shared.append("会话列表页连接失败 agent=\(agent.displayName) gateway=\(gatewayURL ?? "unknown") tokenLoaded=\(!(gatewayToken ?? "").isEmpty)")
             await MainActor.run {
-                errorMessage = "无法连接到 IronClaw"
+                errorMessage = "无法连接到 IronClaw：请检查该 Agent 的地址或 Token。"
             }
             return
         }

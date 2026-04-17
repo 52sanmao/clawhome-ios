@@ -29,26 +29,35 @@ class ConnectionManager: ObservableObject {
 
     /// Get or create OpenClawClient for a specific agent.
     func getClient(for agentId: String, gatewayURL: String? = nil, token: String? = nil) -> OpenClawClient {
+        let trimmedToken = token?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if let existingClient = clients[agentId] {
-            if let token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                CoreConfig.shared.saveJWT(token)
+            if !trimmedToken.isEmpty {
+                CoreConfig.shared.saveJWT(trimmedToken)
             }
             return existingClient
         }
 
         let gatewayURLString = gatewayURL ?? CoreConfig.shared.openClawGatewayURL
-        if let token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            CoreConfig.shared.saveJWT(token)
+        if !trimmedToken.isEmpty {
+            CoreConfig.shared.saveJWT(trimmedToken)
         }
+        let tokenProvider: () -> String = {
+            if !trimmedToken.isEmpty {
+                return trimmedToken
+            }
+            return CoreConfig.shared.jwtToken
+        }
+        let tokenLabel = !trimmedToken.isEmpty ? "agent-specific token" : "CoreConfig.shared.jwtToken"
+
         guard let url = URL(string: gatewayURLString) else {
             let defaultURL = URL(string: CoreConfig.shared.openClawGatewayURL)!
-            let client = OpenClawClient(url: defaultURL)
+            let client = OpenClawClient(url: defaultURL, tokenProvider: tokenProvider, tokenLabel: tokenLabel)
             clients[agentId] = client
             setupClientBindings(client: client, agentId: agentId)
             return client
         }
 
-        let client = OpenClawClient(url: url)
+        let client = OpenClawClient(url: url, tokenProvider: tokenProvider, tokenLabel: tokenLabel)
         clients[agentId] = client
         setupClientBindings(client: client, agentId: agentId)
         return client

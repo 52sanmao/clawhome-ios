@@ -77,8 +77,14 @@ class ChatViewModel: ObservableObject {
         connectionDiagnostics.joined(separator: "\n")
     }
 
-    func clearConnectionDiagnostics() {
-        connectionDiagnostics.removeAll()
+    private func presentError(_ message: String, log: String? = nil) {
+        if let log, !log.isEmpty {
+            appendConnectionDiagnostic(log)
+        } else {
+            appendConnectionDiagnostic(message)
+        }
+        errorMessage = message
+        showError = true
     }
 
     // Recording state
@@ -761,9 +767,10 @@ class ChatViewModel: ObservableObject {
 
         // Check connection status
         guard isConnected else {
-            errorMessage = "未连接到 IronClaw HTTP 主链路，无法发送消息"
-            appendConnectionDiagnostic("发送被阻止：HTTP 主链路未连接")
-            showError = true
+            presentError(
+                "未连接到 IronClaw HTTP 主链路，无法发送消息",
+                log: "发送被阻止：HTTP 主链路未连接"
+            )
             return
         }
 
@@ -1106,8 +1113,10 @@ class ChatViewModel: ObservableObject {
     }
 
     private func handleStreamingError(_ error: String) {
-        errorMessage = error
-        showError = true
+        presentError(
+            error,
+            log: "聊天流式处理失败：\(error)"
+        )
         finalizeThinkingMessage()
 
         // 停止定时器并清空队列
@@ -1127,8 +1136,10 @@ class ChatViewModel: ObservableObject {
     }
 
     private func handleError(_ error: Error) {
-        errorMessage = error.localizedDescription
-        showError = true
+        presentError(
+            error.localizedDescription,
+            log: "聊天流式处理失败：\(error.localizedDescription)"
+        )
 
         // Add error message
         let errorChatMessage = ChatMessage(
@@ -1152,8 +1163,10 @@ class ChatViewModel: ObservableObject {
     func startHoldToSpeakRecording() {
         // Check connection status
         guard isConnected else {
-            errorMessage = "未连接到 IronClaw，无法使用语音功能"
-            showError = true
+            presentError(
+                "未连接到 IronClaw，无法使用语音功能",
+                log: "按住说话被阻止：HTTP 主链路未连接"
+            )
             return
         }
 
@@ -1177,8 +1190,10 @@ class ChatViewModel: ObservableObject {
         } catch {
             print("❌ 录音启动失败: \(error)")
             isHoldingSpeakButton = false
-            errorMessage = "录音启动失败: \(error.localizedDescription)"
-            showError = true
+            presentError(
+                "录音启动失败: \(error.localizedDescription)",
+                log: "按住说话录音启动失败：\(error.localizedDescription)"
+            )
             return
         }
 
@@ -1330,8 +1345,10 @@ class ChatViewModel: ObservableObject {
         guard let wavURL = realtimeAudioManager.saveAsWAVFile(audioData) else {
             print("❌ 保存音频文件失败")
             await MainActor.run {
-                self.errorMessage = "保存音频文件失败"
-                self.showError = true
+                self.presentError(
+                    "保存音频文件失败",
+                    log: "语音识别前保存音频失败"
+                )
                 self.isRecognizingAudio = false
                 self.isFinishingRecording = false
             }
@@ -1376,8 +1393,10 @@ class ChatViewModel: ObservableObject {
             fileASRService.onPartialResult = nil
 
             await MainActor.run {
-                self.errorMessage = "语音识别失败: \(error.localizedDescription)"
-                self.showError = true
+                self.presentError(
+                    "语音识别失败: \(error.localizedDescription)",
+                    log: "按住说话录音转写失败：\(error.localizedDescription)"
+                )
                 self.isRecognizingAudio = false
             }
         }
@@ -1501,8 +1520,10 @@ class ChatViewModel: ObservableObject {
     func startMeetingRecording() {
         // Check connection status
         guard isConnected else {
-            errorMessage = "未连接到 IronClaw，无法使用录音功能"
-            showError = true
+            presentError(
+                "未连接到 IronClaw，无法使用录音功能",
+                log: "会议录音启动被阻止：HTTP 主链路未连接"
+            )
             return
         }
 
@@ -1530,8 +1551,10 @@ class ChatViewModel: ObservableObject {
         } catch {
             isMeetingRecording = false
             meetingPhase = .ready
-            errorMessage = "启动录音失败: \(error.localizedDescription)"
-            showError = true
+            presentError(
+                "启动录音失败: \(error.localizedDescription)",
+                log: "会议录音启动失败：\(error.localizedDescription)"
+            )
             print("❌ 启动会议录音失败: \(error)")
         }
     }
@@ -1592,8 +1615,10 @@ class ChatViewModel: ObservableObject {
         guard let wavURL = meetingRecordingManager.saveAsWAVFile(audioData) else {
             print("❌ 保存音频文件失败")
             await MainActor.run {
-                self.errorMessage = "保存音频文件失败"
-                self.showError = true
+                self.presentError(
+                    "保存音频文件失败",
+                    log: "会议录音转写前保存音频文件失败"
+                )
                 self.isRecognizingAudio = false
             }
             return
@@ -1632,8 +1657,10 @@ class ChatViewModel: ObservableObject {
             try? FileManager.default.removeItem(at: wavURL)
 
             await MainActor.run {
-                self.errorMessage = "语音识别失败: \(error.localizedDescription)"
-                self.showError = true
+                self.presentError(
+                    "语音识别失败: \(error.localizedDescription)",
+                    log: "会议录音转写失败：\(error.localizedDescription)"
+                )
                 self.isRecognizingAudio = false
             }
         }
@@ -2070,8 +2097,10 @@ class ChatViewModel: ObservableObject {
         } catch {
             print("[ChatViewModel] ❌ Failed to abort chat: \(error)")
             await MainActor.run {
-                errorMessage = "终止对话失败: \(error.localizedDescription)"
-                showError = true
+                presentError(
+                    "终止对话失败: \(error.localizedDescription)",
+                    log: "终止对话失败：\(error.localizedDescription)"
+                )
             }
         }
     }

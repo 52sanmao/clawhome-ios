@@ -31,6 +31,8 @@ class OpenClawClient: ObservableObject {
     private let session = URLSession(configuration: .default)
     private let coreConfig = CoreConfig.shared
     private let diagnostics = ClawHomeLogStore.shared
+    private let tokenProvider: () -> String
+    private let tokenLabel: String
 
     private var runQueue: [String] = []
     private var bufferedMessages: [String: BufferedMessage] = [:]
@@ -83,12 +85,18 @@ class OpenClawClient: ObservableObject {
         var fullText: String { deltas.joined() }
     }
 
-    nonisolated init(url: URL) {
+    nonisolated convenience init(url: URL) {
+        self.init(url: url, tokenProvider: { CoreConfig.shared.jwtToken }, tokenLabel: "CoreConfig.shared.jwtToken")
+    }
+
+    nonisolated init(url: URL, tokenProvider: @escaping () -> String, tokenLabel: String) {
         if let normalized = Self.normalizedHTTPURL(from: url) {
             self.baseURL = normalized
         } else {
             self.baseURL = URL(string: "http://127.0.0.1:8642")!
         }
+        self.tokenProvider = tokenProvider
+        self.tokenLabel = tokenLabel
     }
 
     private func log(_ message: String) {
@@ -137,7 +145,7 @@ class OpenClawClient: ObservableObject {
         request.timeoutInterval = 60
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let token = coreConfig.jwtToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let token = tokenProvider().trimmingCharacters(in: .whitespacesAndNewlines)
         if !token.isEmpty {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
@@ -149,7 +157,7 @@ class OpenClawClient: ObservableObject {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        let tokenState = token.isEmpty ? "未携带 Token" : "已携带 Token(length=\(token.count))"
+        let tokenState = token.isEmpty ? "未携带 Token" : "已携带 Token(length=\(token.count) source=\(tokenLabel))"
         log("准备请求 \(method) \(path) host=\(url.host ?? "unknown") \(tokenState)")
         return request
     }
